@@ -1,4 +1,4 @@
-;;; wave-client-websocket.el --- Methods to communicate with the Wave server
+;;; websocket.el --- Emacs WebSocket client
 
 ;; Copyright (c) 2010 Andrew Hyatt
 ;;
