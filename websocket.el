@@ -116,6 +116,7 @@ the connection is closed, then CLOSE-CALLBACK is called."
                                 (unless (websocket-openp websocket)
                                   (funcall (websocket-close-callback
                                             websocket)))))))
+    (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
                                  (let ((path (url-filename url-struct)))
