@@ -30,7 +30,7 @@
 
 (require 'url-parse)
 (require 'calc)
-(require 'cl)
+(eval-when-compile (require 'cl))
 
 ;;; Code:
 (defstruct websocket
