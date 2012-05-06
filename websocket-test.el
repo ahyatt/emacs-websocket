@@ -25,16 +25,17 @@
 ;; http://github.com/ohler/ert, it also comes with Emacs 24 and above.
 
 (require 'ert)
-(require 'cl)
+(require 'websocket)
+(eval-when-compile (require 'cl))
 
 (defun websocket-test-get-filtered-response (outputs)
-  (let ((packet-data nil)
-        (websocket
-         (make-websocket :conn "fake-conn"
-                         :filter (lambda (packet) (push packet packet-data))
-                         :close-callback (lambda (not-called) (assert nil))
-                         :url "ws://foo/bar"
-                         :v75 nil)))
+  (let* ((packet-data nil)
+         (websocket
+          (make-websocket :conn "fake-conn"
+                          :filter (lambda (packet) (push packet packet-data))
+                          :close-callback (lambda (not-called) (assert nil))
+                          :url "ws://foo/bar"
+                          :v75 nil)))
     (dolist (output outputs)
       (websocket-outer-filter websocket output))
     (nreverse packet-data)))
