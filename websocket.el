@@ -139,6 +139,7 @@ the connection is closed, then CLOSE-CALLBACK is called."
       (save-excursion
         (with-current-buffer buf
           (goto-char (point-max))
+          (insert "[WS] ")
           (insert (apply 'format (append (list msg) args)))
           (insert "\n"))))))
 
