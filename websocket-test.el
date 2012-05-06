@@ -40,6 +40,10 @@
       (websocket-outer-filter websocket output))
     (nreverse packet-data)))
 
+(ert-deftest websocket-genbytes-length ()
+  (loop repeat 100
+        do (should (= (string-bytes (websocket-genbytes)) 8))))
+
 (ert-deftest websocket-filter-basic ()
   (should (equal
            '("foo")
@@ -73,6 +77,7 @@
            (websocket-test-get-filtered-response
             '("HTTP 1.1" "\0foo\377")))))
 
+(ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
 (ert-run-tests-interactively 'websocket-filter-inflight-packets)
 (ert-run-tests-interactively 'websocket-filter-first-response)
