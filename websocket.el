@@ -54,10 +54,10 @@ URL of the connection.")
 
 (defun websocket-genbytes ()
   "Generate bytes used at the end of the handshake."
-  (let ((s '()))
-    (dotimes (v 8)
-      (push (random 256) s))
-    (apply 'string s)))
+  (let ((s "        "))
+    (dotimes (i 8)
+      (aset s i (random 256)))
+    s))
 
 (defun websocket-random-insert (str-to-insert target-str)
   "Insert STR-TO-INSERT at a random position in TARGET-STR."
