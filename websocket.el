@@ -50,8 +50,6 @@ Best set in a LET statement around the `websocket-open' reply.")
 The buffer is ` *websocket URL debug*' where URL is the
 URL of the connection.")
 
-(defconst websocket-keylen 20)
-
 (defun websocket-genbytes ()
   "Generate bytes used at the end of the handshake."
   (let ((s '()))
