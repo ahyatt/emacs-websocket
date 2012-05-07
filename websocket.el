@@ -21,12 +21,8 @@
 ;; 02110-1301, USA.
 
 ;;; Commentary:
-;; This implements two version of the websocket protocol, the older
-;; v75 protocol:
-;; http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-75
-;;
-;; By default, we use the newer v76 protocol:
-;; http://www.whatwg.org/specs/web-socket-protocol/
+;; This implements RFC 6455, which can be found at
+;; http://tools.ietf.org/html/rfc6455.
 
 (require 'url-parse)
 (require 'calc)
