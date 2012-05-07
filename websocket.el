@@ -140,11 +140,14 @@ the connection is closed, then CLOSE-CALLBACK is called."
     (websocket-debug websocket "Websocket opened")
     websocket))
 
+(defun websocket-get-debug-buffer-create (websocket)
+  (get-buffer-create (format " *websocket %s debug*"
+                             (websocket-url websocket))))
+
 (defun websocket-debug (websocket msg &rest args)
   "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
   (when websocket-debug
-    (let ((buf (get-buffer-create (format " *websocket %s debug*"
-                                          (websocket-url websocket)))))
+    (let ((buf (websocket-get-debug-buffer-create websocket)))
       (save-excursion
         (with-current-buffer buf
           (goto-char (point-max))
