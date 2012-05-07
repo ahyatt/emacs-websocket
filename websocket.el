@@ -41,6 +41,10 @@
 The buffer is ` *websocket URL debug*' where URL is the
 URL of the connection.")
 
+(defconst websocket-guid "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+  "The websocket GUID as defined in RFC 6455. Do not change
+  unless the RFC changes.")
+
 (defun websocket-genbytes ()
   "Generate bytes used at the end of the handshake."
   (let ((s "        "))
@@ -70,6 +74,12 @@ URL of the connection.")
                                (+ 58 (- r 15)))))
                          max-num-str)))
     (cons max-num-str num)))
+
+(defun websocket-calculate-accept (key)
+  "Calculate the expect value of the accept header.
+This is based on the KEY from the Sec-WebSocket-Key header."
+  (base64-encode-string
+   (sha1 (concat key websocket-guid) nil nil t)))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.

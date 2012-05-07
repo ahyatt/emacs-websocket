@@ -76,7 +76,14 @@
            (websocket-test-get-filtered-response
             '("HTTP 1.1" "\0foo\377")))))
 
+(ert-deftest websocket-calculate-accept ()
+  ;; This example comes straight from RFC 6455
+  (should
+   (equal "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+    (websocket-calculate-accept "dGhlIHNhbXBsZSBub25jZQ=="))))
+
 (ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
 (ert-run-tests-interactively 'websocket-filter-inflight-packets)
 (ert-run-tests-interactively 'websocket-filter-first-response)
+(ert-run-tests-interactively 'websocket-calculate-accept)
