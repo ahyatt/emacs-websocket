@@ -34,8 +34,7 @@
           (make-websocket :conn "fake-conn"
                           :filter (lambda (packet) (push packet packet-data))
                           :close-callback (lambda (not-called) (assert nil))
-                          :url "ws://foo/bar"
-                          :v75 nil)))
+                          :url "ws://foo/bar")))
     (dolist (output outputs)
       (websocket-outer-filter websocket output))
     (nreverse packet-data)))

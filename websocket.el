@@ -34,12 +34,7 @@
   (filter (assert nil) :read-only t)
   (close-callback (assert nil) :read-only t)
   (url (assert nil) :read-only t)
-  (inflight-packet nil)
-  (v75 (assert nil) :read-only t))
-
-(defvar websocket-use-v75 nil
-  "Set to true if to use the older v75 protocol.
-Best set in a LET statement around the `websocket-open' reply.")
+  (inflight-packet nil))
 
 (defvar websocket-debug nil
   "Set to true to output debugging info to a per-websocket buffer.
@@ -98,8 +93,7 @@ the connection is closed, then CLOSE-CALLBACK is called."
                      (error "Not implemented yet")
                    (error "Unknown protocol"))))
          (websocket (make-websocket :conn conn :url url :filter filter
-                                    :close-callback close-callback
-                                    :v75 websocket-use-v75)))
+                                    :close-callback close-callback)))
     (lexical-let ((websocket websocket))
       (set-process-filter conn
                           (lambda (process output)
@@ -132,7 +126,7 @@ the connection is closed, then CLOSE-CALLBACK is called."
              (car key1-cons)
              (car key2-cons)))
     (websocket-debug websocket "Sending bytes")
-    (unless websocket-use-v75 (process-send-string conn bytes))
+    (process-send-string conn bytes)
     (websocket-debug websocket "Websocket opened")
     websocket))
 
@@ -202,10 +196,9 @@ the connection is closed, then CLOSE-CALLBACK is called."
                  ((run open listen) t)
                  ((stop exit signal closed connect failed nil) nil)))
     (websocket-close websocket)
-    (let ((websocket-use-v75 (websocket-v75 websocket)))
-      (websocket-open (websocket-url websocket)
+    (websocket-open (websocket-url websocket)
                       (websocket-filter websocket)
-                      (websocket-close-callback websocket)))))
+                      (websocket-close-callback websocket))))
 
 (provide 'websocket)
 
