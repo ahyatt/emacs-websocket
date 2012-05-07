@@ -22,6 +22,11 @@
    (lambda (p) (push p wstest-msgs) (message "ws packet: %S" p))
    (lambda () (setq wstest-closed t))))
 
+(defun wstest-pop-to-debug ()
+  "Open websocket log buffer. Not used in testing. Just for debugging."
+  (interactive)
+  (pop-to-buffer (websocket-get-debug-buffer-create wstest-ws)))
+
 (sleep-for 0.1)
 (assert (websocket-openp wstest-ws))
 
