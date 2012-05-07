@@ -25,19 +25,24 @@
 ;; http://github.com/ohler/ert, it also comes with Emacs 24 and above.
 
 (require 'ert)
-(require 'cl)
+(require 'websocket)
+(eval-when-compile (require 'cl))
 
 (defun websocket-test-get-filtered-response (outputs)
-  (let ((packet-data nil)
-        (websocket
-         (make-websocket :conn "fake-conn"
-                         :filter (lambda (packet) (push packet packet-data))
-                         :close-callback (lambda (not-called) (assert nil))
-                         :url "ws://foo/bar"
-                         :v75 nil)))
+  (let* ((packet-data nil)
+         (websocket
+          (make-websocket :conn "fake-conn"
+                          :filter (lambda (packet) (push packet packet-data))
+                          :close-callback (lambda (not-called) (assert nil))
+                          :url "ws://foo/bar"
+                          :v75 nil)))
     (dolist (output outputs)
       (websocket-outer-filter websocket output))
     (nreverse packet-data)))
+
+(ert-deftest websocket-genbytes-length ()
+  (loop repeat 100
+        do (should (= (string-bytes (websocket-genbytes)) 8))))
 
 (ert-deftest websocket-filter-basic ()
   (should (equal
@@ -72,6 +77,7 @@
            (websocket-test-get-filtered-response
             '("HTTP 1.1" "\0foo\377")))))
 
+(ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
 (ert-run-tests-interactively 'websocket-filter-inflight-packets)
 (ert-run-tests-interactively 'websocket-filter-first-response)
