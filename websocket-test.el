@@ -41,7 +41,7 @@
 
 (ert-deftest websocket-genbytes-length ()
   (loop repeat 100
-        do (should (= (string-bytes (websocket-genbytes)) 8))))
+        do (should (= (string-bytes (websocket-genbytes)) 16))))
 
 (ert-deftest websocket-filter-basic ()
   (should (equal

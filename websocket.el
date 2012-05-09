@@ -34,6 +34,8 @@
   (filter (assert nil) :read-only t)
   (close-callback (assert nil) :read-only t)
   (url (assert nil) :read-only t)
+  (accept-string (assert nil))
+  (handshake-accept-passed-p nil)
   (inflight-packet nil))
 
 (defvar websocket-debug nil
@@ -45,10 +47,14 @@ URL of the connection.")
   "The websocket GUID as defined in RFC 6455. Do not change
   unless the RFC changes.")
 
+(defvar websocket-require-server-accept t
+  "If true, we require the correct Sec-WebSocket-Accept header
+as part of the connection handshake.")
+
 (defun websocket-genbytes ()
   "Generate bytes used at the end of the handshake."
-  (let ((s "        "))
-    (dotimes (i 8)
+  (let ((s "                "))
+    (dotimes (i 16)
       (aset s i (random 256)))
     s))
 
@@ -60,20 +66,7 @@ URL of the connection.")
 
 (defun websocket-genkey ()
   "Generate a key suitable for the websocket handshake."
-  (let* ((num-spaces (+ 1 (random 12)))
-         (max-num-str (calc-eval (format "floor(random(4294967295 / %d)) * %d"
-                                         num-spaces num-spaces)))
-         (num max-num-str))
-    (dotimes (_ num-spaces)
-      (setq max-num-str (websocket-random-insert " " max-num-str)))
-    (dotimes (_ (+ 1 (random 12)))
-      (setq max-num-str (websocket-random-insert
-                         (let ((r (random 82)))
-                           (char-to-string
-                            (if (< r 15) (+ 33 r)
-                               (+ 58 (- r 15)))))
-                         max-num-str)))
-    (cons max-num-str num)))
+  (base64-encode-string (websocket-genbytes)))
 
 (defun websocket-calculate-accept (key)
   "Calculate the expect value of the accept header.
@@ -87,9 +80,7 @@ Websocket packets are sent as the only argument to FILTER, and if
 the connection is closed, then CLOSE-CALLBACK is called."
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
-         (key1-cons (websocket-genkey))
-         (key2-cons (websocket-genkey))
-         (bytes (websocket-genbytes))
+         (key (websocket-genkey))
          (buf-name (format " *%s*" name))
          (coding-system-for-read 'binary)
          (coding-system-for-write 'binary)
@@ -103,7 +94,9 @@ the connection is closed, then CLOSE-CALLBACK is called."
                      (error "Not implemented yet")
                    (error "Unknown protocol"))))
          (websocket (make-websocket :conn conn :url url :filter filter
-                                    :close-callback close-callback)))
+                                    :close-callback close-callback
+                                    :accept-string
+                                    (websocket-calculate-accept key))))
     (lexical-let ((websocket websocket))
       (set-process-filter conn
                           (lambda (process output)
@@ -124,19 +117,16 @@ the connection is closed, then CLOSE-CALLBACK is called."
     (websocket-debug websocket "Sending handshake")
     (process-send-string
      conn
-     (format (concat "Upgrade: WebSocket\r\n"
+     (format (concat "Host: %s\r\n"
+                     "Upgrade: websocket\r\n"
                      "Connection: Upgrade\r\n"
-                     "Host: %s\r\n"
+                     "Sec-WebSocket-Key: %s\r\n"
                      "Origin: %s\r\n"
-                     "Sec-WebSocket-Key1: %s\r\n"
-                     "Sec-WebSocket-Key2: %s\r\n"
+                     "Sec-WebSocket-Version: 13\r\n"
                      "\r\n")
              (url-host (url-generic-parse-url url))
              system-name
-             (car key1-cons)
-             (car key2-cons)))
-    (websocket-debug websocket "Sending bytes")
-    (process-send-string conn bytes)
+             key))
     (websocket-debug websocket "Websocket opened")
     websocket))
 
@@ -162,9 +152,22 @@ the connection is closed, then CLOSE-CALLBACK is called."
         (end-point 0)
         (text (concat (websocket-inflight-packet websocket) output)))
     (setq start-point (string-match "\0" text))
-      (while (and start-point
-                  (setq end-point
-                        (string-match "\377" text start-point)))
+    ;; If we've received the first packet, check to see if we've
+    ;; received the desired handshake.
+    (when (and websocket-require-server-accept
+               (not (websocket-handshake-accept-passed-p websocket))
+               start-point)
+      (let ((accept-string
+             (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
+        (websocket-debug websocket "Handshake received, checking for: %s" accept-string)
+        (if (string-match (regexp-quote accept-string) text)
+            (progn
+              (setf (websocket-handshake-accept-passed-p websocket) t)
+              (websocket-debug websocket "Handshake accepted"))
+        (error "Incorrect handshake from websocket: is this really a websocket connection?"))))
+    (while (and start-point
+                (setq end-point
+                      (string-match "\377" text start-point)))
         (funcall (websocket-filter websocket)
                  (substring text (+ 1 start-point) end-point))
         (setq start-point (string-match "\0" text end-point)))
