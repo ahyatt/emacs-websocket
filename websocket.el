@@ -162,21 +162,21 @@ the connection is closed, then CLOSE-CALLBACK is called."
         (end-point 0)
         (text (concat (websocket-inflight-packet websocket) output)))
     (setq start-point (string-match "\0" text))
-      (while (and start-point
-                  (setq end-point
-                        (string-match "\377" text start-point)))
-        (funcall (websocket-filter websocket)
-                 (substring text (+ 1 start-point) end-point))
-        (setq start-point (string-match "\0" text end-point)))
-      (let* ((next-start (or start-point
-                                     (when end-point
-                                       (or (string-match "\0" text end-point)
-                                           (- (length text) 1)))
-                                     0))
-             (next-end (or (string-match "\377" text next-start)
-                            (length text))))
-        (setf (websocket-inflight-packet websocket)
-              (concat (substring text next-start next-end))))))
+    (while (and start-point
+                (setq end-point
+                      (string-match "\377" text start-point)))
+      (funcall (websocket-filter websocket)
+               (substring text (+ 1 start-point) end-point))
+      (setq start-point (string-match "\0" text end-point)))
+    (let* ((next-start (or start-point
+                           (when end-point
+                             (or (string-match "\0" text end-point)
+                                 (- (length text) 1)))
+                           0))
+           (next-end (or (string-match "\377" text next-start)
+                         (length text))))
+      (setf (websocket-inflight-packet websocket)
+            (concat (substring text next-start next-end))))))
 
 (defun websocket-send (websocket text)
   "Send the raw TEXT as a websocket packet."
