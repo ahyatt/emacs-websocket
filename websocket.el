@@ -165,8 +165,9 @@ the connection is closed, then CLOSE-CALLBACK is called."
     (while (and start-point
                 (setq end-point
                       (string-match "\377" text start-point)))
-      (funcall (websocket-filter websocket)
-               (substring text (+ 1 start-point) end-point))
+      (ignore-errors
+        (funcall (websocket-filter websocket)
+                 (substring text (+ 1 start-point) end-point)))
       (setq start-point (string-match "\0" text end-point)))
     (let* ((next-start (or start-point
                            (when end-point
