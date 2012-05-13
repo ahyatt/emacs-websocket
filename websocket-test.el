@@ -82,6 +82,18 @@
    (equal "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
     (websocket-calculate-accept "dGhlIHNhbXBsZSBub25jZQ=="))))
 
+(ert-deftest websocket-get-bits ()
+  ;; 0         1         2         3
+  ;; 01234567890123456789012345678901
+  ;; For testing, let's use this fairly random sequence
+  ;; 01010001000100101011011110010101
+  ;; = 
+  (let ((test-num 1360181141))
+    (should (equal 1 (websocket-get-bits test-num 0 1)))
+    (should (equal 1 (websocket-get-bits test-num 30 31)))
+    ;; 16-20 = 10110
+    (should (equal 22 (websocket-get-bits test-num 16 20)))))
+
 (ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
 (ert-run-tests-interactively 'websocket-filter-inflight-packets)

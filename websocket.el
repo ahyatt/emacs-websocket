@@ -74,6 +74,20 @@ This is based on the KEY from the Sec-WebSocket-Key header."
   (base64-encode-string
    (sha1 (concat key websocket-guid) nil nil t)))
 
+(defun websocket-get-bits (num start-bit end-bit)
+  "Return the value of NUM between START-BIT and END-BIT.
+START-BIT must be less than END-BIT.  The range is inclusive at
+both ends.  Although the ordering of bits is big-endian the bits
+are numbed most significant first.  That is, the most
+significant, leftmost bit is 0."
+  (when (> start-bit end-bit)
+      (error
+       "In websocket-get-bits: Start bit must be less than end-bit."))
+  (logand (lsh num (- (- 31 end-bit)))
+          (loop for i from 0 upto
+                (- end-bit start-bit)
+                sum (expt 2 i))))
+
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
 Websocket packets are sent as the only argument to FILTER, and if
