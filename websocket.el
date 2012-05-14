@@ -50,6 +50,9 @@ Best set in a LET statement around the `websocket-open' reply.")
 The buffer is ` *websocket URL debug*' where URL is the
 URL of the connection.")
 
+(defvar websocket-ignore-error nil
+  "Set to true to suppress error messages.")
+
 (defun websocket-genbytes ()
   "Generate bytes used at the end of the handshake."
   (let ((s "        "))
@@ -83,7 +86,12 @@ URL of the connection.")
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
 Websocket packets are sent as the only argument to FILTER, and if
-the connection is closed, then CLOSE-CALLBACK is called."
+the connection is closed, then CLOSE-CALLBACK is called.
+Errors from FILTER function will be ignored.  You should catch it in the
+FILTER function in order to recover from the error.  Errors will be
+messaged using `messsage' function.  To suppress messaging errors, set
+`websocket-ignore-error' to `t'.  You can log errors by setting
+`websocket-debug' to `t'."
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key1-cons (websocket-genkey))
@@ -144,6 +152,12 @@ the connection is closed, then CLOSE-CALLBACK is called."
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
 
+(defun websocket-error (websocket msg &rest args)
+  "Message error."
+  (unless websocket-ignore-error
+    (apply 'message msg args))
+  (apply 'websocket-debug msg args))
+
 (defun websocket-debug (websocket msg &rest args)
   "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
   (when websocket-debug
@@ -165,9 +179,12 @@ the connection is closed, then CLOSE-CALLBACK is called."
     (while (and start-point
                 (setq end-point
                       (string-match "\377" text start-point)))
-      (ignore-errors
-        (funcall (websocket-filter websocket)
-                 (substring text (+ 1 start-point) end-point)))
+      (condition-case err
+          (funcall (websocket-filter websocket)
+                   (substring text (+ 1 start-point) end-point))
+        (error (websocket-error websocket
+                                "Got error from the filter function: %s"
+                                (error-message-string err))))
       (setq start-point (string-match "\0" text end-point)))
     (let* ((next-start (or start-point
                            (when end-point
