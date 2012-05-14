@@ -96,13 +96,13 @@
        '("\0foo\377\0bar\377")
        (lambda () (error "See if websocket can handle this")))
     (should (equal packet-data '("foo" "bar")))
-    (should (eq (length err-list) 0)))
+    (should (equal err-list nil)))
   (destructuring-bind (packet-data err-list)
       (websocket-test-get-filtered-response-with-error
        '("\0foo\377" "\0bar\377")
        (lambda () (error "See if websocket can handle this")))
     (should (equal packet-data '("foo" "bar")))
-    (should (eq (length err-list) 0))))
+    (should (equal err-list nil))))
 
 (ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
