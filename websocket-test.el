@@ -99,6 +99,12 @@
     (should (equal err-list nil)))
   (destructuring-bind (packet-data err-list)
       (websocket-test-get-filtered-response-with-error
+       '("\0foo\377\0bar\377")
+       (lambda () "Raise another type of error" (/ 1 0)))
+    (should (equal packet-data '("foo" "bar")))
+    (should (equal err-list nil)))
+  (destructuring-bind (packet-data err-list)
+      (websocket-test-get-filtered-response-with-error
        '("\0foo\377" "\0bar\377")
        (lambda () (error "See if websocket can handle this")))
     (should (equal packet-data '("foo" "bar")))
