@@ -43,39 +43,6 @@
   (loop repeat 100
         do (should (= (string-bytes (websocket-genbytes)) 16))))
 
-(ert-deftest websocket-filter-basic ()
-  (should (equal
-           '("foo")
-           (websocket-test-get-filtered-response '("\0foo\377"))))
-  (should (equal
-           '("foo" "bar")
-           (websocket-test-get-filtered-response
-            '("\0foo\377\0bar\377"))))
-  (should (equal
-           '("foo" "bar")
-           (websocket-test-get-filtered-response
-            '("\0foo\377" "\0bar\377")))))
-
-(ert-deftest websocket-filter-inflight-packets ()
-  (should (equal
-           '("foo" "bar")
-           (websocket-test-get-filtered-response
-            '("\0foo\377\0b" "a" "r\377"))))
-  (should (equal
-           '("foo" "bar")
-           (websocket-test-get-filtered-response
-            '("\0foo\377\0ba" "r\377baz")))))
-
-(ert-deftest websocket-filter-first-response ()
-  (should (equal
-           '("foo" "bar")
-           (websocket-test-get-filtered-response
-            '("HTTP 1.1\0foo\377\0bar\377"))))
-  (should (equal
-           '("foo")
-           (websocket-test-get-filtered-response
-            '("HTTP 1.1" "\0foo\377")))))
-
 (ert-deftest websocket-calculate-accept ()
   ;; This example comes straight from RFC 6455
   (should
@@ -115,9 +82,3 @@
                   (bindat-pack '((:len u32) (:val vec 2 u32))
                                `((:len . ,(lsh 127 16))
                                  (:val . [0 70000])))))))
-
-(ert-run-tests-interactively 'websocket-genbytes-length)
-(ert-run-tests-interactively 'websocket-filter-basic)
-(ert-run-tests-interactively 'websocket-filter-inflight-packets)
-(ert-run-tests-interactively 'websocket-filter-first-response)
-(ert-run-tests-interactively 'websocket-calculate-accept)
