@@ -94,6 +94,28 @@
     ;; 16-20 = 10110
     (should (equal 22 (websocket-get-bits test-num 16 20)))))
 
+(defconst websocket-test-hello "\x81\x05\x48\x65\x6c\x6c\x6f"
+  "'Hello' string example, taken from the RFC.")
+
+(ert-deftest websocket-get-opcode ()
+  (should (equal 'text (websocket-get-opcode websocket-test-hello))))
+
+(ert-deftest websocket-get-payload-len ()
+  (should (equal '(5 . 0)
+                 (websocket-get-payload-len websocket-test-hello)))
+  (should (equal '(200 . 3)
+                 (websocket-get-payload-len
+                  (bindat-pack '((:len u32) (:val u16))
+                               `((:len . ,(lsh 126 16))
+                                 (:val . 200))))))
+  ;; we don't want to hit up any limits even on strange emacs builds,
+  ;; so this test has a pretty small test value
+  (should (equal '(70000 . 9)
+                 (websocket-get-payload-len
+                  (bindat-pack '((:len u32) (:val vec 2 u32))
+                               `((:len . ,(lsh 127 16))
+                                 (:val . [0 70000])))))))
+
 (ert-run-tests-interactively 'websocket-genbytes-length)
 (ert-run-tests-interactively 'websocket-filter-basic)
 (ert-run-tests-interactively 'websocket-filter-inflight-packets)
