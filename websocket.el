@@ -104,18 +104,21 @@ the connection is closed, then CLOSE-CALLBACK is called."
          (websocket (make-websocket :conn conn :url url :filter filter
                                     :close-callback close-callback
                                     :v75 websocket-use-v75)))
-    (lexical-let ((websocket websocket))
-      (set-process-filter conn
-                          (lambda (process output)
-                            (websocket-outer-filter websocket output)))
-      (when close-callback
-        (set-process-sentinel conn
-                              (lambda (process change)
-                                (websocket-debug websocket
-                                                 "State change to %s" change)
-                                (unless (websocket-openp websocket)
-                                  (funcall (websocket-close-callback
-                                            websocket)))))))
+    (process-put conn :websocket websocket)
+    (set-process-filter conn
+                        (lambda (process output)
+                          (let ((websocket (process-get process :websocket)))
+                            (websocket-outer-filter websocket output))))
+    (when close-callback
+      (set-process-sentinel
+       conn
+       (lambda (process change)
+         (let ((websocket (process-get process :websocket)))
+           (websocket-debug websocket
+                            "State change to %s" change)
+           (unless (websocket-openp websocket)
+             (funcall (websocket-close-callback
+                       websocket)))))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
