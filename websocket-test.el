@@ -79,3 +79,7 @@
                   (bindat-pack '((:len u8) (:val vec 2 u32))
                                `((:len . 127)
                                  (:val . [0 70000])))))))
+
+(ert-deftest websocket-read-frame ()
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
+                 (websocket-read-frame websocket-test-hello))))

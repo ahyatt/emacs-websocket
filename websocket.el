@@ -119,6 +119,18 @@ many bytes were consumed from the string."
            (cons (websocket-get-bytes (substring s 1) 2) 3))
           (t (cons initial-val 1)))))
 
+(defstruct websocket-frame opcode payload)
+
+(defun websocket-read-frame (s)
+  "Read a frame and return a `websocket-frame' struct with the contents."
+  (let ((opcode (websocket-get-opcode s))
+        (payload-len (websocket-get-payload-len (substring s 1)))
+        (maskp (= 128 (logand 128 (websocket-get-bytes s 1)))))
+    (make-websocket-frame :opcode opcode
+                          :payload (substring s (+ 1 (cdr payload-len))
+                                              (+ 1 (car payload-len)
+                                                 (cdr payload-len))))))
+
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
 Websocket packets are sent as the only argument to FILTER, and if
