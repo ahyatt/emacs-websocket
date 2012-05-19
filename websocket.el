@@ -75,28 +75,32 @@ This is based on the KEY from the Sec-WebSocket-Key header."
   (base64-encode-string
    (sha1 (concat key websocket-guid) nil nil t)))
 
-(defun websocket-get-bits (dword start-bit end-bit)
-  "Return the value of DWORD between START-BIT and END-BIT.
-START-BIT must be less than END-BIT.  The range is inclusive at
-both ends.  Although the ordering of bits is big-endian the bits
-are numbed most significant first.  That is, the most
-significant, leftmost bit is 0."
-  (when (> start-bit end-bit)
-      (error
-       "In websocket-get-bits: Start bit must be less than end-bit."))
-  (logand (lsh dword (- (- 31 end-bit)))
-          (loop for i from 0 upto
-                (- end-bit start-bit)
-                sum (expt 2 i))))
-
-(defun websocket-get-dword (s)
-  "From string S, retrieve the first dword."
-  (bindat-get-field (bindat-unpack '((:val dword)) s) :val))
+(defun websocket-get-bytes (s n)
+  "From string S, retrieve the value of N bytes.
+Return the value as an unsigned integer.  The value N must be a
+power of 2, up to 8."
+  (if (= n 8)
+    (let* ((32-bit-parts
+            (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
+           (cval (calc-eval '("(2^32 * $ + $$)") nil
+                            (aref 32-bit-parts 0) (aref 32-bit-parts 1))))
+      (when (calc-eval '("$ > $$") 'pred cval most-positive-fixnum)
+        (error "websocket-get-bytes: value too large to parse!"))
+      (string-to-int cval))
+    ;; n is not 8
+    (bindat-get-field (bindat-unpack
+                     `((:val
+                        ,(cond ((= n 1) 'u8)
+                               ((= n 2) 'u16)
+                               ((= n 4) 'u32)
+                               (t (error
+                                   "websocket-get-bytes: Unknown N: %s" n)))))
+                     s) :val)))
 
 (defun websocket-get-opcode (s)
   "Retrieve the opcode from the dword at the start of the frame
 given by string."
-  (let ((opcode (websocket-get-bits (websocket-get-dword s) 4 7)))
+  (let ((opcode (logand #xf (websocket-get-bytes s 1))))
     (cond ((= opcode 0) 'continuation)
           ((= opcode 1) 'text)
           ((= opcode 2) 'binary)
@@ -108,22 +112,12 @@ given by string."
   "Parses out the payload length from the string.
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
-  (let* ((dword (websocket-get-dword s))
-         (initial-val (websocket-get-bits dword 9 15)))
+  (let* ((initial-val (logand 127 (websocket-get-bytes s 1))))
     (cond ((< initial-val 126)
-           (cons initial-val 0))
+           (cons initial-val 1))
           ((= initial-val 126)
-           (cons
-            (bindat-get-field (bindat-unpack '((:val u16)) (substring s 4)) :val)
-            3))
-          (t (let* ((32-bit-parts
-                     (bindat-get-field (bindat-unpack '((:val vec 2 u32))
-                                                      (substring s 4)) :val))
-                   (cval (calc-eval "(2^32 * $ + $$)" nil
-                                    (aref 32-bit-parts 0) (aref 32-bit-parts 1))))
-              (when (calc-eval "$ > $$" 'pred cval most-positive-fixnum)
-                (error "Websocket sent a frame too large for emacs!"))
-              (cons (string-to-int cval) 9))))))
+           (cons (websocket-get-bytes (substring s 1) 2) 3))
+          (t (cons (websocket-get-bytes (substring s 1) 8) 9)))))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
