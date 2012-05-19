@@ -51,6 +51,9 @@
 
 (defconst websocket-test-hello "\x81\x05\x48\x65\x6c\x6c\x6f"
   "'Hello' string example, taken from the RFC.")
+(defconst websocket-test-masked-hello
+  "\x81\x85\x37\xfa\x21\x3d\x7f\x9f\x4d\x51\x58"
+  "'Hello' masked string example, taken from the RFC.")
 
 (ert-deftest websocket-get-bytes ()
   (should (equal #x5 (websocket-get-bytes "\x5" 1)))
@@ -82,4 +85,6 @@
 
 (ert-deftest websocket-read-frame ()
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
-                 (websocket-read-frame websocket-test-hello))))
+                 (websocket-read-frame websocket-test-hello)))
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
+                 (websocket-read-frame websocket-test-masked-hello))))

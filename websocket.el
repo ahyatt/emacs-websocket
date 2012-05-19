@@ -121,15 +121,33 @@ many bytes were consumed from the string."
 
 (defstruct websocket-frame opcode payload)
 
+(defun websocket-mask (key data)
+  "Mask string DATA with string KEY according to the RFC.
+This is used to both mask and unmask data."
+  (apply
+   'string
+   (loop for b across data
+         for i from 0 to (length data)
+         collect (logxor (websocket-get-bytes (substring key (mod i 4)) 1) b))))
+
 (defun websocket-read-frame (s)
   "Read a frame and return a `websocket-frame' struct with the contents."
-  (let ((opcode (websocket-get-opcode s))
-        (payload-len (websocket-get-payload-len (substring s 1)))
-        (maskp (= 128 (logand 128 (websocket-get-bytes s 1)))))
-    (make-websocket-frame :opcode opcode
-                          :payload (substring s (+ 1 (cdr payload-len))
-                                              (+ 1 (car payload-len)
-                                                 (cdr payload-len))))))
+  (let* ((opcode (websocket-get-opcode s))
+         (payload-len (websocket-get-payload-len (substring s 1)))
+         (maskp (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1))))
+         (unmasked-payload (substring
+                            s
+                            (+ (if maskp 5 1) (cdr payload-len))
+                            (+ (if maskp 5 1) (car payload-len)
+                               (cdr payload-len)))))
+    (if maskp
+        (let ((masking-key (substring s (+ 1 (cdr payload-len))
+                                      (+ 5 (cdr payload-len)))))
+          (make-websocket-frame :opcode opcode
+                                :payload
+                                (websocket-mask masking-key unmasked-payload)))
+      (make-websocket-frame :opcode opcode
+                          :payload unmasked-payload))))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
