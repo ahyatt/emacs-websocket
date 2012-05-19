@@ -113,11 +113,11 @@ given by string."
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
   (let* ((initial-val (logand 127 (websocket-get-bytes s 1))))
-    (cond ((< initial-val 126)
-           (cons initial-val 1))
+    (cond ((= initial-val 127)
+           (cons (websocket-get-bytes (substring s 1) 8) 9))
           ((= initial-val 126)
            (cons (websocket-get-bytes (substring s 1) 2) 3))
-          (t (cons (websocket-get-bytes (substring s 1) 8) 9)))))
+          (t (cons initial-val 1)))))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
