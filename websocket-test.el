@@ -96,3 +96,16 @@
     (should-not (websocket-read-frame
                  (substring websocket-test-masked-hello 0
                             (- (length websocket-test-masked-hello) (+ i 1)))))))
+
+(defun websocket-test-make-websocket-with-accept-string (s)
+  (make-websocket :conn "fake-conn" :url "ws://fo/bar" :filter t :close-callback t 
+                  :accept-string s))
+
+(ert-deftest websocket-verify-handshake ()
+  ;; This examples comes from the RFC
+  (should (websocket-verify-handshake
+           (websocket-test-make-websocket-with-accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+           "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"))
+  (should-error (websocket-verify-handshake
+                 (websocket-test-make-websocket-with-accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+                 "Sec-WebSocket-Accept: foo\r\n")))

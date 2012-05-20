@@ -222,7 +222,7 @@ the connection is closed, then CLOSE-CALLBACK is called."
              key))
     (websocket-debug websocket "Websocket opened")
     websocket))
-
+`
 (defun websocket-get-debug-buffer-create (websocket)
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
@@ -238,26 +238,35 @@ the connection is closed, then CLOSE-CALLBACK is called."
           (insert (apply 'format (append (list msg) args)))
           (insert "\n"))))))
 
+(defun websocket-verify-handshake (websocket output)
+  "Verify that OUTPUT contains a valid handshake.
+The handshake is based on the key contained in WEBSOCKET.  The
+output is assumed to have complete headers.  This function will
+either return t or call `error'."
+  (let ((accept-string
+         (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
+    (websocket-debug websocket "Handshake received, checking for: %s" accept-string)
+    (if (string-match (regexp-quote accept-string) output)
+        (progn
+          (setf (websocket-handshake-accept-passed-p websocket) t)
+          (websocket-debug websocket "Handshake accepted")
+          ;; return true
+          t)
+      (error "Incorrect handshake from websocket: is this really a websocket connection?"))))
+
 (defun websocket-outer-filter (websocket output)
   "Removes connection strings, only passes packets."
   (websocket-debug websocket "Received: %s" output)
   (let ((start-point 0)
         (end-point 0)
         (text (concat (websocket-inflight-packet websocket) output)))
-    (setq start-point (string-match "\0" text))
-    ;; If we've received the first packet, check to see if we've
+    (setq start-point (+ 4 (string-match "\r\n\r\n" text)))
+    ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
     (when (and websocket-require-server-accept
                (not (websocket-handshake-accept-passed-p websocket))
                start-point)
-      (let ((accept-string
-             (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
-        (websocket-debug websocket "Handshake received, checking for: %s" accept-string)
-        (if (string-match (regexp-quote accept-string) text)
-            (progn
-              (setf (websocket-handshake-accept-passed-p websocket) t)
-              (websocket-debug websocket "Handshake accepted"))
-        (error "Incorrect handshake from websocket: is this really a websocket connection?"))))
+      (websocket-verify-handshake websocket output))
     (while (and start-point
                 (setq end-point
                       (string-match "\377" text start-point)))
