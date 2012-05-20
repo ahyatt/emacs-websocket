@@ -266,7 +266,7 @@ either return t or call `error'."
     (when (and websocket-require-server-accept
                (not (websocket-handshake-accept-passed-p websocket))
                start-point)
-      (websocket-verify-handshake websocket output))
+      (websocket-verify-handshake websocket text))
     (while (and start-point
                 (setq end-point
                       (string-match "\377" text start-point)))
