@@ -87,4 +87,12 @@
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
                  (websocket-read-frame websocket-test-hello)))
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
-                 (websocket-read-frame websocket-test-masked-hello))))
+                 (websocket-read-frame websocket-test-masked-hello)))
+  (dotimes (i (- (length websocket-test-hello) 1))
+    (should-not (websocket-read-frame
+                 (substring websocket-test-hello 0
+                            (- (length websocket-test-hello) (+ i 1))))))
+  (dotimes (i (- (length websocket-test-masked-hello) 1))
+    (should-not (websocket-read-frame
+                 (substring websocket-test-masked-hello 0
+                            (- (length websocket-test-masked-hello) (+ i 1)))))))

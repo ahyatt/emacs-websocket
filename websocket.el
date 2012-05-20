@@ -100,6 +100,7 @@ power of 2, up to 8."
 (defun websocket-get-opcode (s)
   "Retrieve the opcode from the dword at the start of the frame
 given by string."
+  (websocket-ensure-length s 1)
   (let ((opcode (logand #xf (websocket-get-bytes s 1))))
     (cond ((= opcode 0) 'continuation)
           ((= opcode 1) 'text)
@@ -112,10 +113,13 @@ given by string."
   "Parses out the payload length from the string.
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
+  (websocket-ensure-length s 1)
   (let* ((initial-val (logand 127 (websocket-get-bytes s 1))))
     (cond ((= initial-val 127)
+           (websocket-ensure-length s 9)
            (cons (websocket-get-bytes (substring s 1) 8) 9))
           ((= initial-val 126)
+           (websocket-ensure-length s 3)
            (cons (websocket-get-bytes (substring s 1) 2) 3))
           (t (cons initial-val 1)))))
 
@@ -130,24 +134,38 @@ This is used to both mask and unmask data."
          for i from 0 to (length data)
          collect (logxor (websocket-get-bytes (substring key (mod i 4)) 1) b))))
 
+(defun websocket-ensure-length (s n)
+  "Ensure the string S has at most N bytes.
+Otherwise we throw the error `websocket-incomplete-frame'."
+  (when (< (length s) n)
+    (throw 'websocket-incomplete-frame nil)))
+
 (defun websocket-read-frame (s)
-  "Read a frame and return a `websocket-frame' struct with the contents."
-  (let* ((opcode (websocket-get-opcode s))
-         (payload-len (websocket-get-payload-len (substring s 1)))
-         (maskp (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1))))
-         (unmasked-payload (substring
-                            s
-                            (+ (if maskp 5 1) (cdr payload-len))
-                            (+ (if maskp 5 1) (car payload-len)
-                               (cdr payload-len)))))
-    (if maskp
-        (let ((masking-key (substring s (+ 1 (cdr payload-len))
-                                      (+ 5 (cdr payload-len)))))
-          (make-websocket-frame :opcode opcode
-                                :payload
-                                (websocket-mask masking-key unmasked-payload)))
-      (make-websocket-frame :opcode opcode
-                          :payload unmasked-payload))))
+  "Read a frame and return a `websocket-frame' struct with the contents.
+This only gets complete frames. Partial frames need to wait until
+the frame finishes.  If the frame is not completed, return NIL."
+  (catch 'websocket-incomplete-frame
+    (websocket-ensure-length s 2)
+    (let* ((opcode (websocket-get-opcode s))
+           (payload-len (websocket-get-payload-len (substring s 1)))
+           (maskp (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1))))
+           (unmasked-payload (progn
+                               (websocket-ensure-length s (+ (if maskp 5 1)
+                                                             (car payload-len)
+                                                             (cdr payload-len)))
+                               (substring
+                                s
+                                (+ (if maskp 5 1) (cdr payload-len))
+                                (+ (if maskp 5 1) (car payload-len)
+                                   (cdr payload-len))))))
+      (if maskp
+          (let ((masking-key (substring s (+ 1 (cdr payload-len))
+                                        (+ 5 (cdr payload-len)))))
+            (make-websocket-frame :opcode opcode
+                                  :payload
+                                  (websocket-mask masking-key unmasked-payload)))
+        (make-websocket-frame :opcode opcode
+                              :payload unmasked-payload)))))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
