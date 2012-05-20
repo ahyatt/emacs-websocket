@@ -84,9 +84,15 @@
                                  (:val . [0 70000])))))))
 
 (ert-deftest websocket-read-frame ()
-  (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
+                                       :length (length websocket-test-hello))
                  (websocket-read-frame websocket-test-hello)))
-  (should (equal (make-websocket-frame :opcode 'text :payload "Hello")
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
+                                       :length (length websocket-test-hello))
+                 (websocket-read-frame (concat websocket-test-hello
+                                               "should-not-be-read"))))
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
+                                       :length (length websocket-test-masked-hello))
                  (websocket-read-frame websocket-test-masked-hello)))
   (dotimes (i (- (length websocket-test-hello) 1))
     (should-not (websocket-read-frame
