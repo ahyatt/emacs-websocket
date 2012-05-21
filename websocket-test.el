@@ -104,7 +104,7 @@
                             (- (length websocket-test-masked-hello) (+ i 1)))))))
 
 (defun websocket-test-make-websocket-with-accept-string (s)
-  (make-websocket :conn "fake-conn" :url "ws://fo/bar" :filter t :close-callback t 
+  (make-websocket :conn "fake-conn" :url "ws://foo/bar" :filter t :close-callback t 
                   :accept-string s))
 
 (ert-deftest websocket-verify-handshake ()
@@ -115,3 +115,35 @@
   (should-error (websocket-verify-handshake
                  (websocket-test-make-websocket-with-accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
                  "Sec-WebSocket-Accept: foo\r\n")))
+
+(ert-deftest websocket-process-frame ()
+  (let* ((sent)
+         (processed)
+         (deleted)
+         (websocket (make-websocket :conn "fake-conn"
+                                    :url "ws://foo/bar"
+                                    :filter (lambda (frame) (setq processed
+                                                             (websocket-frame-payload frame)))
+                                    :close-callback t
+                                    :accept-string "accept-string")))
+    (dolist (opcode '(text binary continuation))
+      (setq processed nil)
+      (should (equal
+               "hello"
+               (progn
+                 (websocket-process-frame websocket
+                                          (make-websocket-frame :opcode opcode :payload "hello"))
+                 processed))))
+    (setq sent nil)
+    (flet ((websocket-send (websocket content) (setq sent content)))
+      (should (equal
+               "\xA"
+               (progn
+                 (websocket-process-frame websocket
+                                          (make-websocket-frame :opcode 'ping))
+                 sent))))
+    (flet ((delete-process (conn) (setq deleted t)))
+      (should (progn
+                (websocket-process-frame websocket
+                                         (make-websocket-frame :opcode 'close))
+                deleted)))))

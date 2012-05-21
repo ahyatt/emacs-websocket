@@ -252,6 +252,20 @@ either return t or call `error'."
           t)
       (error "Incorrect handshake from websocket: is this really a websocket connection?"))))
 
+(defun websocket-process-frame (websocket frame)
+  "Process FRAME returned from WEBSOCKET.
+If the frame has a payload, the frame is passed to the filter
+slot of WEBSOCKET.  If the frame is a ping, we reply with a pong.
+If the frame is a close, we terminate the connection."
+  (let ((opcode (websocket-frame-opcode frame)))
+    (cond ((memq opcode '(continuation text binary))
+           (funcall (websocket-filter websocket) frame))
+          ((eq opcode 'ping)
+           ;; \xA == pong opcode
+           (websocket-send websocket "\xA"))
+          ((eq opcode 'close)
+           (delete-process (websocket-conn websocket))))))
+
 (defun websocket-outer-filter (websocket output)
   "Removes connection strings, only passes packets."
   (websocket-debug websocket "Received: %s" output)
@@ -265,21 +279,13 @@ either return t or call `error'."
                (not (websocket-handshake-accept-passed-p websocket))
                start-point)
       (websocket-verify-handshake websocket text))
-    (while (and start-point
-                (setq end-point
-                      (string-match "\377" text start-point)))
-        (funcall (websocket-filter websocket)
-                 (substring text (+ 1 start-point) end-point))
-        (setq start-point (string-match "\0" text end-point)))
-      (let* ((next-start (or start-point
-                                     (when end-point
-                                       (or (string-match "\0" text end-point)
-                                           (- (length text) 1)))
-                                     0))
-             (next-end (or (string-match "\377" text next-start)
-                            (length text))))
-        (setf (websocket-inflight-packet websocket)
-              (concat (substring text next-start next-end))))))
+    (let ((current-frame))
+      (while (and start-point
+                  (setq current-frame (websocket-read-frame (substring text start-point))))
+        (websocket-process-frame websocket current-frame)
+        (incf start-point (websocket-frame-length current-frame))))
+    ;; TODO(ahyatt) Rename websocket-inflight-packet (it isn't a packet)
+    (setf (websocket-inflight-packet websocket) (substring text (or start-point 0)))))
 
 (defun websocket-send (websocket text)
   "Send the raw TEXT as a websocket packet."
@@ -287,9 +293,7 @@ either return t or call `error'."
   (websocket-ensure-connected websocket)
   (unless (websocket-openp websocket)
     (error "No webserver process to send data to!"))
-  (process-send-string (websocket-conn websocket)
-                       (concat (unibyte-string ?\0) text
-                               (unibyte-string ?\377))))
+  (process-send-string (websocket-conn websocket)))
 
 (defun websocket-openp (websocket)
   "Returns true if the websocket exists and is open."
