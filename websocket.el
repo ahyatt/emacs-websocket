@@ -59,12 +59,6 @@ as part of the connection handshake.")
       (aset s i (random 256)))
     s))
 
-(defun websocket-random-insert (str-to-insert target-str)
-  "Insert STR-TO-INSERT at a random position in TARGET-STR."
-  (let ((r (+ 1 (random (- (length target-str) 2)))))
-    (concat (substring target-str 0 r) str-to-insert
-            (substring target-str r))))
-
 (defun websocket-genkey ()
   "Generate a key suitable for the websocket handshake."
   (base64-encode-string (websocket-genbytes)))
