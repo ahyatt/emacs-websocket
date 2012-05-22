@@ -168,3 +168,21 @@
   (should-error (websocket-to-bytes 30 3))
   (should-error (websocket-to-bytes 300 1)))
 
+(ert-deftest websocket-encode-frame ()
+  ;; We've tested websocket-read-frame, now we can use that to help
+  ;; test websocket-encode-frame.
+  (should (equal
+           websocket-test-hello
+           (websocket-encode-frame
+            (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))
+  (should-not
+   (websocket-frame-completep
+    (websocket-read-frame
+     (websocket-encode-frame (make-websocket-frame :opcode 'text :payload "Hello" :completep nil)))))
+  (dolist ((opcode '(close ping pong)))
+    (should (equal
+             opcode
+             (websocket-frame-opcode
+              (websocket-read-frame
+               (websocket-encode-frame (make-websocket-frame :opcode opcode))))))))
+

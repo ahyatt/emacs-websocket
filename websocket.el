@@ -154,6 +154,27 @@ Otherwise we throw the error `websocket-incomplete-frame'."
   (when (< (length s) n)
     (throw 'websocket-incomplete-frame nil)))
 
+(defun websocket-encode-frame (frame)
+  "Encode the FRAME struct to the binary representation."
+  (let ((opcode (websocket-frame-opcode frame))
+        (payload (websocket-frame-payload frame))
+        (fin (websocket-frame-completep frame)))
+    (concat (unibyte-string (logior
+                             (cond ((eq opcode 'continuation) 0)
+                                   ((eq opcode 'text) 1)
+                                   ((eq opcode 'binary 2))
+                                   ((eq opcode 'close 8))
+                                   ((eq opcode 'ping 9))
+                                   ((eq opcode 'pong 10)))
+                             (if fin 128 0)))
+            (when (memq opcode '(continuation text binary))
+              (websocket-to-bytes (length payload)
+                                  (cond ((< (length payload) 126) 1)
+                                        ((< (length payload) 65536 2))
+                                        ((t 8)))))
+            (when (memq opcode '(continuation text binary))
+              payload))))
+
 (defun websocket-read-frame (s)
   "Read a frame and return a `websocket-frame' struct with the contents.
 This only gets complete frames. Partial frames need to wait until
