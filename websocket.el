@@ -123,7 +123,7 @@ many bytes were consumed from the string."
            (cons (websocket-get-bytes (substring s 1) 2) 3))
           (t (cons initial-val 1)))))
 
-(defstruct websocket-frame opcode payload length)
+(defstruct websocket-frame opcode payload length completep)
 
 (defun websocket-mask (key data)
   "Mask string DATA with string KEY according to the RFC.
@@ -149,21 +149,23 @@ the frame finishes.  If the frame is not completed, return NIL."
     (let* ((opcode (websocket-get-opcode s))
            (payload-len (websocket-get-payload-len (substring s 1)))
            (maskp (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1))))
+           (fin (logand 128 (websocket-get-bytes s 1)))
            (payload-start (+ (if maskp 5 1) (cdr payload-len)))
            (payload-end (+ payload-start (car payload-len)))
            (unmasked-payload (progn
                                (websocket-ensure-length s payload-end)
                                (substring s payload-start payload-end))))
-      (if maskp
-          (let ((masking-key (substring s (+ 1 (cdr payload-len))
-                                        (+ 5 (cdr payload-len)))))
-            (make-websocket-frame :opcode opcode
-                                  :payload
-                                  (websocket-mask masking-key unmasked-payload)
-                                  :length payload-end))
-        (make-websocket-frame :opcode opcode
-                              :payload unmasked-payload
-                              :length payload-end)))))
+      (make-websocket-frame
+       :opcode opcode
+       :payload
+       (if maskp
+           (let ((masking-key (substring s (+ 1 (cdr payload-len))
+                                         (+ 5 (cdr payload-len)))))
+             (websocket-mask masking-key unmasked-payload))
+         unmasked-payload
+         )
+       :length payload-end
+       :completep (> fin 0)))))
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.

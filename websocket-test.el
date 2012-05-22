@@ -85,15 +85,26 @@
 
 (ert-deftest websocket-read-frame ()
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
-                                       :length (length websocket-test-hello))
+                                       :length (length websocket-test-hello)
+                                       :completep t)
                  (websocket-read-frame websocket-test-hello)))
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
-                                       :length (length websocket-test-hello))
+                                       :length (length websocket-test-hello)
+                                       :completep t)
                  (websocket-read-frame (concat websocket-test-hello
                                                "should-not-be-read"))))
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
-                                       :length (length websocket-test-masked-hello))
+                                       :length (length websocket-test-masked-hello)
+                                       :completep t)
                  (websocket-read-frame websocket-test-masked-hello)))
+  (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
+                                       :length (length websocket-test-hello)
+                                       :completep nil)
+                 (websocket-read-frame (concat (unibyte-string
+                                                (logand (string-to-char
+                                                         (substring websocket-test-hello 0 1))
+                                                        127))
+                                               (substring websocket-test-hello 1)))))
   (dotimes (i (- (length websocket-test-hello) 1))
     (should-not (websocket-read-frame
                  (substring websocket-test-hello 0
