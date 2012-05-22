@@ -148,7 +148,7 @@
     (setq sent nil)
     (flet ((websocket-send (websocket content) (setq sent content)))
       (should (equal
-               "\xA"
+               (make-websocket-frame :opcode 'pong :completep t)
                (progn
                  (websocket-process-frame websocket
                                           (make-websocket-frame :opcode 'ping))

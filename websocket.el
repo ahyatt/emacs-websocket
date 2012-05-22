@@ -298,8 +298,8 @@ If the frame is a close, we terminate the connection."
     (cond ((memq opcode '(continuation text binary))
            (funcall (websocket-filter websocket) frame))
           ((eq opcode 'ping)
-           ;; \xA == pong opcode
-           (websocket-send websocket "\xA"))
+           (websocket-send websocket
+                           (make-websocket-frame :opcode 'pong :completep t)))
           ((eq opcode 'close)
            (delete-process (websocket-conn websocket))))))
 
@@ -324,13 +324,16 @@ If the frame is a close, we terminate the connection."
     ;; TODO(ahyatt) Rename websocket-inflight-packet (it isn't a packet)
     (setf (websocket-inflight-packet websocket) (substring text (or start-point 0)))))
 
-(defun websocket-send (websocket text)
-  "Send the raw TEXT as a websocket packet."
-  (websocket-debug websocket "Sending text: %s" text)
+(defun websocket-send (websocket frame)
+  "Send the FRAME to the websocket server."
+  (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
+                   (websocket-frame-opcode frame)
+                   (websocket-frame-payload frame))
   (websocket-ensure-connected websocket)
   (unless (websocket-openp websocket)
     (error "No webserver process to send data to!"))
-  (process-send-string (websocket-conn websocket)))
+  (process-send-string (websocket-conn websocket)
+                       (websocket-encode-frame frame)))
 
 (defun websocket-openp (websocket)
   "Returns true if the websocket exists and is open."
