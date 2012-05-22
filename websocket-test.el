@@ -158,3 +158,13 @@
                 (websocket-process-frame websocket
                                          (make-websocket-frame :opcode 'close))
                 deleted)))))
+
+(ert-deftest websocket-to-bytes ()
+  ;; We've tested websocket-get-bytes by itself, now we can use it to
+  ;; help test websocket-to-bytes.
+  (should (equal 30 (websocket-get-bytes (websocket-to-bytes 30 1) 1)))
+  (should (equal 300 (websocket-get-bytes (websocket-to-bytes 300 2) 2)))
+  (should (equal 70000 (websocket-get-bytes (websocket-to-bytes 70000 8) 8)))
+  (should-error (websocket-to-bytes 30 3))
+  (should-error (websocket-to-bytes 300 1)))
+

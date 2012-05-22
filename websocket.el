@@ -91,6 +91,26 @@ power of 2, up to 8."
                                    "websocket-get-bytes: Unknown N: %s" n)))))
                      s) :val)))
 
+(defun websocket-to-bytes (val nbytes)
+  "Encode the integer VAL in NBYTES of data.
+NBYTES much be a power of 2, up to 8."
+  (unless (or (and (< nbytes 8)
+                   (< val (expt 2 (* 8 nbytes))))
+              (and (= nbytes 8)
+                   (calc-eval "% < 2^(8 * %%)" 'pred val nbytes)))
+      (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
+             val nbytes))
+  (if (= nbytes 8)
+      (bindat-pack `((:val vec 2 u32))
+                   `((:val . [,(/ val 4294967296)
+                              ,(mod val 4294967296)])))
+    (bindat-pack
+     `((:val ,(cond ((= nbytes 1) 'u8)
+                    ((= nbytes 2) 'u16)
+                    ((= nbytes 4) 'u32)
+                    (t (error "websocket-to-bytes: Unknown NBYTES: %s" nbytes)))))
+     `((:val . ,val)))))
+
 (defun websocket-get-opcode (s)
   "Retrieve the opcode from the dword at the start of the frame
 given by string."
