@@ -16,6 +16,8 @@
 (defvar wstest-msgs nil)
 (defvar wstest-closed nil)
 
+(setq websocket-require-server-accept t)
+
 (defvar wstest-ws
   (websocket-open
    "ws://127.0.0.1:9999"

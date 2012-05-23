@@ -275,8 +275,8 @@ called."
                      "Sec-WebSocket-Version: 13\r\n"
                      "\r\n")
              (url-host (url-generic-parse-url url))
-             system-name
-             key))
+             key
+             system-name))
     (websocket-debug websocket "Websocket opened")
     websocket))
 `
@@ -348,7 +348,8 @@ If the frame is a close, we terminate the connection."
 
 (defun websocket-send-text (websocket text)
   "Send TEXT to the websocket as a complete frame."
-  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text)))
+  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
+                                                  :completep t)))
 
 (defun websocket-send (websocket frame)
   "Send the FRAME to the websocket server."
