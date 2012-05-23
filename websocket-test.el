@@ -41,7 +41,7 @@
 
 (ert-deftest websocket-genbytes-length ()
   (loop repeat 100
-        do (should (= (string-bytes (websocket-genbytes)) 16))))
+        do (should (= (string-bytes (websocket-genbytes 16)) 16))))
 
 (ert-deftest websocket-calculate-accept ()
   ;; This example comes straight from RFC 6455
