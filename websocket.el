@@ -224,8 +224,9 @@ the frame finishes.  If the frame is not completed, return NIL."
 
 (defun websocket-open (url filter &optional close-callback)
   "Open a websocket connection to URL.
-Websocket packets are sent as the only argument to FILTER, and if
-the connection is closed, then CLOSE-CALLBACK is called."
+`websocket-frame' structs are sent as the only argument to
+FILTER, and if the connection is closed, then CLOSE-CALLBACK is
+called."
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
@@ -262,7 +263,8 @@ the connection is closed, then CLOSE-CALLBACK is called."
                          (format "GET %s HTTP/1.1\r\n"
                                  (let ((path (url-filename url-struct)))
                                    (if (> (length path) 0) path "/"))))
-    (websocket-debug websocket "Sending handshake")
+    (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
+                     key (websocket-accept-string websocket))
     (process-send-string
      conn
      (format (concat "Host: %s\r\n"
@@ -343,6 +345,10 @@ If the frame is a close, we terminate the connection."
         (incf start-point (websocket-frame-length current-frame))))
     ;; TODO(ahyatt) Rename websocket-inflight-packet (it isn't a packet)
     (setf (websocket-inflight-packet websocket) (substring text (or start-point 0)))))
+
+(defun websocket-send-text (websocket text)
+  "Send TEXT to the websocket as a complete frame."
+  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text)))
 
 (defun websocket-send (websocket frame)
   "Send the FRAME to the websocket server."
