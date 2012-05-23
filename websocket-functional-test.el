@@ -19,7 +19,8 @@
 (defvar wstest-ws
   (websocket-open
    "ws://127.0.0.1:9999"
-   (lambda (p) (push p wstest-msgs) (message "ws packet: %S" p))
+   (lambda (frame) (push (websocket-frame-payload frame) wstest-msgs)
+     (message "ws frame: %S" (websocket-frame-payload frame)))
    (lambda () (setq wstest-closed t))))
 
 (defun wstest-pop-to-debug ()
@@ -31,7 +32,7 @@
 (assert (websocket-openp wstest-ws))
 
 (assert (null wstest-msgs))
-(websocket-send wstest-ws "Hi!")
+(websocket-send-text wstest-ws "Hi!")
 (sleep-for 0.1)
 (assert (equal (car wstest-msgs) "You said: Hi!"))
 
