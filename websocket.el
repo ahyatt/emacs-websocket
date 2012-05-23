@@ -52,16 +52,21 @@ URL of the connection.")
   "If true, we require the correct Sec-WebSocket-Accept header
 as part of the connection handshake.")
 
-(defun websocket-genbytes ()
-  "Generate bytes used at the end of the handshake."
-  (let ((s "                "))
-    (dotimes (i 16)
+(defvar websocket-mask-frames t
+  "If true, we mask frames as defined in the spec.  This is
+recommended to be true, and some servers will refuse to
+communicate with unmasked clients.")
+
+(defun websocket-genbytes (nbytes)
+  "Generate NBYTES random bytes."
+  (let ((s (make-string nbytes ?\s)))
+    (dotimes (i nbytes)
       (aset s i (random 256)))
     s))
 
 (defun websocket-genkey ()
   "Generate a key suitable for the websocket handshake."
-  (base64-encode-string (websocket-genbytes)))
+  (base64-encode-string (websocket-genbytes 16)))
 
 (defun websocket-calculate-accept (key)
   "Calculate the expect value of the accept header.
@@ -159,26 +164,36 @@ Otherwise we throw the error `websocket-incomplete-frame'."
   (let* ((opcode (websocket-frame-opcode frame))
          (payload (websocket-frame-payload frame))
          (fin (websocket-frame-completep frame))
-         (payloadp (memq opcode '(continuation text binary))))
-    (concat (unibyte-string (logior
-                             (cond ((eq opcode 'continuation) 0)
-                                   ((eq opcode 'text) 1)
-                                   ((eq opcode 'binary 2))
-                                   ((eq opcode 'close 8))
-                                   ((eq opcode 'ping 9))
-                                   ((eq opcode 'pong 10)))
-                             (if fin 128 0)))
-            (when payloadp
-              (cond ((< (length payload) 126) nil)
-                    ((< (length payload) 65536) (unibyte-string 126))
-                    (t (unibyte-string 127))))
-            (when payloadp
-              (websocket-to-bytes (length payload)
-                                   (cond ((< (length payload) 126) 1)
-                                         ((< (length payload) 65536) 2)
-                                         ((t 8)))))
-            (when payloadp
-              payload))))
+         (payloadp (memq opcode '(continuation text binary)))
+         (mask-key (when websocket-mask-frames  (websocket-genbytes 4))))
+    (apply 'unibyte-string
+           (append (list
+                    (logior (cond ((eq opcode 'continuation) 0)
+                                  ((eq opcode 'text) 1)
+                                  ((eq opcode 'binary 2))
+                                  ((eq opcode 'close 8))
+                                  ((eq opcode 'ping 9))
+                                  ((eq opcode 'pong 10)))
+                            (if fin 128 0)))
+                   (when payloadp
+                     (list
+                      (logior
+                       (if websocket-mask-frames 128 0)
+                       (cond ((< (length payload) 126) (length payload))
+                             ((< (length payload) 65536) 126)
+                             (t 127)))))
+                   (when (and payloadp (>= (length payload) 126)) 
+                     (append (websocket-to-bytes (length payload)
+                                          (cond ((< (length payload) 126) 1)
+                                                ((< (length payload) 65536) 2)
+                                                (t 8))) nil))
+                   (when websocket-mask-frames
+                     (append mask-key nil))
+                   (when payloadp
+                     (append (if websocket-mask-frames
+                                 (websocket-mask mask-key payload)
+                               payload)
+                             nil))))))
 
 (defun websocket-read-frame (s)
   "Read a frame and return a `websocket-frame' struct with the contents.
