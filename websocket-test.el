@@ -175,6 +175,13 @@
            websocket-test-hello
            (websocket-encode-frame
             (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))
+  (dolist (len '(200 70000))
+    (let ((long-string (make-string len ?x)))
+      (should (equal long-string
+                     (websocket-frame-payload
+                      (websocket-read-frame
+                       (websocket-encode-frame
+                        (make-websocket-frame :opcode 'text :payload long-string))))))))
   (should-not
    (websocket-frame-completep
     (websocket-read-frame

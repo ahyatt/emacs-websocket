@@ -156,9 +156,10 @@ Otherwise we throw the error `websocket-incomplete-frame'."
 
 (defun websocket-encode-frame (frame)
   "Encode the FRAME struct to the binary representation."
-  (let ((opcode (websocket-frame-opcode frame))
-        (payload (websocket-frame-payload frame))
-        (fin (websocket-frame-completep frame)))
+  (let* ((opcode (websocket-frame-opcode frame))
+         (payload (websocket-frame-payload frame))
+         (fin (websocket-frame-completep frame))
+         (payloadp (memq opcode '(continuation text binary))))
     (concat (unibyte-string (logior
                              (cond ((eq opcode 'continuation) 0)
                                    ((eq opcode 'text) 1)
@@ -167,12 +168,16 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                                    ((eq opcode 'ping 9))
                                    ((eq opcode 'pong 10)))
                              (if fin 128 0)))
-            (when (memq opcode '(continuation text binary))
+            (when payloadp
+              (cond ((< (length payload) 126) nil)
+                    ((< (length payload) 65536) (unibyte-string 126))
+                    (t (unibyte-string 127))))
+            (when payloadp
               (websocket-to-bytes (length payload)
-                                  (cond ((< (length payload) 126) 1)
-                                        ((< (length payload) 65536 2))
-                                        ((t 8)))))
-            (when (memq opcode '(continuation text binary))
+                                   (cond ((< (length payload) 126) 1)
+                                         ((< (length payload) 65536) 2)
+                                         ((t 8)))))
+            (when payloadp
               payload))))
 
 (defun websocket-read-frame (s)
