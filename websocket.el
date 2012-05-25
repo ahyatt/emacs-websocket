@@ -85,7 +85,7 @@ power of 2, up to 8."
                             (aref 32-bit-parts 0) (aref 32-bit-parts 1))))
       (when (calc-eval '("$ > $$") 'pred cval most-positive-fixnum)
         (error "websocket-get-bytes: value too large to parse!"))
-      (string-to-int cval))
+      (string-to-number cval))
     ;; n is not 8
     (bindat-get-field (bindat-unpack
                      `((:val
@@ -283,7 +283,7 @@ called."
              system-name))
     (websocket-debug websocket "Websocket opened")
     websocket))
-`
+
 (defun websocket-get-debug-buffer-create (websocket)
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
