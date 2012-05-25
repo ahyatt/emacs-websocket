@@ -192,10 +192,11 @@
    (websocket-frame-completep
     (websocket-read-frame
      (websocket-encode-frame (make-websocket-frame :opcode 'text :payload "Hello" :completep nil)))))
-  (dolist ((opcode '(close ping pong)))
+  (dolist (opcode '(close ping pong))
     (should (equal
              opcode
              (websocket-frame-opcode
               (websocket-read-frame
-               (websocket-encode-frame (make-websocket-frame :opcode opcode))))))))
+               (websocket-encode-frame (make-websocket-frame :opcode opcode
+                                                             :completep t))))))))
 

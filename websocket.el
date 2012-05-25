@@ -170,10 +170,10 @@ Otherwise we throw the error `websocket-incomplete-frame'."
            (append (list
                     (logior (cond ((eq opcode 'continuation) 0)
                                   ((eq opcode 'text) 1)
-                                  ((eq opcode 'binary 2))
-                                  ((eq opcode 'close 8))
-                                  ((eq opcode 'ping 9))
-                                  ((eq opcode 'pong 10)))
+                                  ((eq opcode 'binary) 2)
+                                  ((eq opcode 'close) 8)
+                                  ((eq opcode 'ping) 9)
+                                  ((eq opcode 'pong) 10))
                             (if fin 128 0)))
                    (when payloadp
                      (list
@@ -187,7 +187,7 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                                           (cond ((< (length payload) 126) 1)
                                                 ((< (length payload) 65536) 2)
                                                 (t 8))) nil))
-                   (when websocket-mask-frames
+                   (when (and payloadp websocket-mask-frames)
                      (append mask-key nil))
                    (when payloadp
                      (append (if websocket-mask-frames
@@ -200,14 +200,18 @@ Otherwise we throw the error `websocket-incomplete-frame'."
 This only gets complete frames. Partial frames need to wait until
 the frame finishes.  If the frame is not completed, return NIL."
   (catch 'websocket-incomplete-frame
-    (websocket-ensure-length s 2)
+    (websocket-ensure-length s 1)
     (let* ((opcode (websocket-get-opcode s))
-           (payload-len (websocket-get-payload-len (substring s 1)))
-           (maskp (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1))))
            (fin (logand 128 (websocket-get-bytes s 1)))
-           (payload-start (+ (if maskp 5 1) (cdr payload-len)))
-           (payload-end (+ payload-start (car payload-len)))
-           (unmasked-payload (progn
+           (payloadp (memq opcode '(continuation text binary)))
+           (payload-len (when payloadp
+                          (websocket-get-payload-len (substring s 1))))
+           (maskp (and
+                   payloadp
+                   (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1)))))
+           (payload-start (when payloadp (+ (if maskp 5 1) (cdr payload-len))))
+           (payload-end (when payloadp (+ payload-start (car payload-len))))
+           (unmasked-payload (when payloadp
                                (websocket-ensure-length s payload-end)
                                (substring s payload-start payload-end))))
       (make-websocket-frame
