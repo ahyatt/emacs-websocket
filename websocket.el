@@ -37,6 +37,7 @@
   (url (assert nil) :read-only t)
   (accept-string (assert nil))
   (handshake-accept-passed-p nil)
+  (header-read-p nil)
   (inflight-packet nil))
 
 (defvar websocket-debug nil
@@ -332,21 +333,28 @@ If the frame is a close, we terminate the connection."
 (defun websocket-outer-filter (websocket output)
   "Removes connection strings, only passes packets."
   (websocket-debug websocket "Received: %s" output)
-  (let ((start-point 0)
+  (let ((start-point)
         (end-point 0)
-        (text (concat (websocket-inflight-packet websocket) output)))
-    (setq start-point (+ 4 (string-match "\r\n\r\n" text)))
+        (text (concat (websocket-inflight-packet websocket) output))
+        (header-end-pos))    
     ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
-    (when (and websocket-require-server-accept
-               (not (websocket-handshake-accept-passed-p websocket))
-               start-point)
-      (websocket-verify-handshake websocket text))
-    (let ((current-frame))
-      (while (and start-point
-                  (setq current-frame (websocket-read-frame (substring text start-point))))
-        (websocket-process-frame websocket current-frame)
-        (incf start-point (websocket-frame-length current-frame))))
+    (when (and (not (websocket-header-read-p websocket))
+               (setq header-end-pos (string-match "\r\n\r\n" text))
+               (setq start-point (+ 4 header-end-pos)))
+      (setf (websocket-header-read-p websocket) t)
+      (when (and websocket-require-server-accept
+                (not (websocket-handshake-accept-passed-p websocket))
+                start-point)
+       (websocket-verify-handshake websocket text)))
+    (when (websocket-header-read-p websocket)
+      (unless start-point (setq start-point 0))
+      (let ((current-frame))
+        (while (and (websocket-header-read-p websocket)
+                    (setq current-frame (websocket-read-frame
+                                         (substring text start-point))))
+          (websocket-process-frame websocket current-frame)
+          (incf start-point (websocket-frame-length current-frame)))))
     ;; TODO(ahyatt) Rename websocket-inflight-packet (it isn't a packet)
     (setf (websocket-inflight-packet websocket) (substring text (or start-point 0)))))
 

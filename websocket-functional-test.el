@@ -5,6 +5,7 @@
 (eval-when-compile (require 'cl))
 
 (setq websocket-debug t)
+(toggle-debug-on-error)
 
 (defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
 (defvar wstest-server-name "wstest-server")
