@@ -47,10 +47,11 @@
   ;; This example comes straight from RFC 6455
   (should
    (equal "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-    (websocket-calculate-accept "dGhlIHNhbXBsZSBub25jZQ=="))))
+          (websocket-calculate-accept "dGhlIHNhbXBsZSBub25jZQ=="))))
 
 (defconst websocket-test-hello "\x81\x05\x48\x65\x6c\x6c\x6f"
   "'Hello' string example, taken from the RFC.")
+
 (defconst websocket-test-masked-hello
   "\x81\x85\x37\xfa\x21\x3d\x7f\x9f\x4d\x51\x58"
   "'Hello' masked string example, taken from the RFC.")
@@ -115,16 +116,18 @@
                             (- (length websocket-test-masked-hello) (+ i 1)))))))
 
 (defun websocket-test-make-websocket-with-accept-string (s)
-  (make-websocket :conn "fake-conn" :url "ws://foo/bar" :filter t :close-callback t 
-                  :accept-string s))
+  (make-websocket :conn "fake-conn" :url "ws://foo/bar" :filter t
+                  :close-callback t :accept-string s))
 
 (ert-deftest websocket-verify-handshake ()
   ;; This examples comes from the RFC
   (should (websocket-verify-handshake
-           (websocket-test-make-websocket-with-accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+           (websocket-test-make-websocket-with-accept-string
+            "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
            "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"))
   (should-error (websocket-verify-handshake
-                 (websocket-test-make-websocket-with-accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+                 (websocket-test-make-websocket-with-accept-string
+                  "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
                  "Sec-WebSocket-Accept: foo\r\n")))
 
 (ert-deftest websocket-process-frame ()
@@ -133,8 +136,10 @@
          (deleted)
          (websocket (make-websocket :conn "fake-conn"
                                     :url "ws://foo/bar"
-                                    :filter (lambda (frame) (setq processed
-                                                             (websocket-frame-payload frame)))
+                                    :filter (lambda (frame)
+                                              (setq
+                                               processed
+                                               (websocket-frame-payload frame)))
                                     :close-callback t
                                     :accept-string "accept-string")))
     (dolist (opcode '(text binary continuation))
@@ -142,8 +147,9 @@
       (should (equal
                "hello"
                (progn
-                 (websocket-process-frame websocket
-                                          (make-websocket-frame :opcode opcode :payload "hello"))
+                 (websocket-process-frame
+                  websocket
+                  (make-websocket-frame :opcode opcode :payload "hello"))
                  processed))))
     (setq sent nil)
     (flet ((websocket-send (websocket content) (setq sent content)))
@@ -176,18 +182,18 @@
              websocket-test-hello
              (websocket-encode-frame
               (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))
-      (dolist (len '(200 70000))
-        (let ((long-string (make-string len ?x)))
-          (should (equal long-string
-                         (websocket-frame-payload
-                          (websocket-read-frame
-                           (websocket-encode-frame
-                            (make-websocket-frame :opcode 'text :payload long-string)))))))))
+    (dolist (len '(200 70000))
+      (let ((long-string (make-string len ?x)))
+        (should (equal long-string
+                       (websocket-frame-payload
+                        (websocket-read-frame
+                         (websocket-encode-frame
+                          (make-websocket-frame :opcode 'text :payload long-string)))))))))
   (let ((websocket-mask-frames t))
     (flet ((websocket-genbytes (n) (substring websocket-test-masked-hello 2 6)))
-        (should (equal websocket-test-masked-hello
-                   (websocket-encode-frame
-                    (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))))
+      (should (equal websocket-test-masked-hello
+                     (websocket-encode-frame
+                      (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))))
   (should-not
    (websocket-frame-completep
     (websocket-read-frame
