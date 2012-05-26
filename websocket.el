@@ -382,7 +382,9 @@ If the frame is a close, we terminate the connection."
   "Close the websocket and erase all the old websocket data."
   (websocket-debug websocket "Closing websocket")
   (when (websocket-openp websocket)
-    (process-send-string (websocket-conn websocket) (unibyte-string ?\377?\0)))
+    (websocket-send websocket
+                    (make-websocket-frame :opcode 'close
+                                          :completep t)))
   (kill-buffer (process-buffer (websocket-conn websocket))))
 
 (defun websocket-ensure-connected (websocket)

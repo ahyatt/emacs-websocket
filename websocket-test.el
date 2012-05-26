@@ -211,3 +211,17 @@
                (websocket-encode-frame (make-websocket-frame :opcode opcode
                                                              :completep t))))))))
 
+(ert-deftest websocket-close ()
+  (let ((sent-frames))
+    (flet ((websocket-send (websocket frame) (push frame sent-frames))
+           (websocket-openp (websocket) t)
+           (kill-buffer (buffer))
+           (process-buffer (conn)))
+      (websocket-close (make-websocket :conn "fake-conn"
+                                       :filter t
+                                       :url t
+                                       :accept-string t
+                                       :close-callback t))
+      (should (equal sent-frames (list
+                                  (make-websocket-frame :opcode 'close
+                                                        :completep t)))))))
