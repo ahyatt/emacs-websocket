@@ -101,11 +101,12 @@
   (should (equal (make-websocket-frame :opcode 'text :payload "Hello"
                                        :length (length websocket-test-hello)
                                        :completep nil)
-                 (websocket-read-frame (concat (unibyte-string
-                                                (logand (string-to-char
-                                                         (substring websocket-test-hello 0 1))
-                                                        127))
-                                               (substring websocket-test-hello 1)))))
+                 (websocket-read-frame
+                  (concat (unibyte-string
+                           (logand (string-to-char
+                                    (substring websocket-test-hello 0 1))
+                                   127))
+                          (substring websocket-test-hello 1)))))
   (dotimes (i (- (length websocket-test-hello) 1))
     (should-not (websocket-read-frame
                  (substring websocket-test-hello 0
@@ -188,16 +189,20 @@
                        (websocket-frame-payload
                         (websocket-read-frame
                          (websocket-encode-frame
-                          (make-websocket-frame :opcode 'text :payload long-string)))))))))
+                          (make-websocket-frame :opcode 'text
+                                                :payload long-string)))))))))
   (let ((websocket-mask-frames t))
     (flet ((websocket-genbytes (n) (substring websocket-test-masked-hello 2 6)))
       (should (equal websocket-test-masked-hello
                      (websocket-encode-frame
-                      (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))))
+                      (make-websocket-frame :opcode 'text :payload "Hello"
+                                            :completep t))))))
   (should-not
    (websocket-frame-completep
     (websocket-read-frame
-     (websocket-encode-frame (make-websocket-frame :opcode 'text :payload "Hello" :completep nil)))))
+     (websocket-encode-frame (make-websocket-frame :opcode 'text
+                                                   :payload "Hello"
+                                                   :completep nil)))))
   (dolist (opcode '(close ping pong))
     (should (equal
              opcode
