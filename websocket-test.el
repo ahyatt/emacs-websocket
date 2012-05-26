@@ -225,3 +225,27 @@
       (should (equal sent-frames (list
                                   (make-websocket-frame :opcode 'close
                                                         :completep t)))))))
+
+(ert-deftest websocket-outer-filter ()
+  (let* ((fake-ws (make-websocket :conn t :filter t :url t
+                                  :accept-string t :close-callback t))
+         (processed-frames)
+         (frame1 (make-websocket-frame :opcode 'text :payload "foo" :completep t
+                                       :length 9))
+         (frame2 (make-websocket-frame :opcode 'text :payload "bar" :completep t
+                                       :length 9))
+         (websocket-frames
+          (concat
+           (websocket-encode-frame frame1)
+           (websocket-encode-frame frame2))))
+    (flet ((websocket-process-frame (websocket frame)
+                                    (push frame processed-frames))
+           (websocket-verify-handshake (websocket output) t))
+      (websocket-outer-filter fake-ws "Sec-")
+      (websocket-outer-filter fake-ws "WebSocket-Accept: acceptstring")
+      (websocket-outer-filter fake-ws (concat
+                                       "\r\n\r\n"
+                                       (substring websocket-frames 0 2)))
+      (should (websocket-header-read-p fake-ws))
+      (websocket-outer-filter fake-ws (substring websocket-frames 2))
+      (should (equal (list frame2 frame1) processed-frames)))))

@@ -350,8 +350,7 @@ If the frame is a close, we terminate the connection."
     (when (websocket-header-read-p websocket)
       (unless start-point (setq start-point 0))
       (let ((current-frame))
-        (while (and (websocket-header-read-p websocket)
-                    (setq current-frame (websocket-read-frame
+        (while (and (setq current-frame (websocket-read-frame
                                          (substring text start-point))))
           (websocket-process-frame websocket current-frame)
           (incf start-point (websocket-frame-length current-frame)))))
