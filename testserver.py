@@ -19,7 +19,7 @@ class EchoWebSocket(websocket.WebSocketHandler):
         logging.info("ON_CLOSE")
 
     def allow_draft76(self):
-        return True
+        return False
 
 
 if __name__ == "__main__":

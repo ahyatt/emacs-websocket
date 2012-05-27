@@ -5,6 +5,7 @@
 (eval-when-compile (require 'cl))
 
 (setq websocket-debug t)
+(toggle-debug-on-error)
 
 (defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
 (defvar wstest-server-name "wstest-server")
@@ -16,10 +17,13 @@
 (defvar wstest-msgs nil)
 (defvar wstest-closed nil)
 
+(setq websocket-require-server-accept t)
+
 (defvar wstest-ws
   (websocket-open
    "ws://127.0.0.1:9999"
-   (lambda (p) (push p wstest-msgs) (message "ws packet: %S" p))
+   (lambda (frame) (push (websocket-frame-payload frame) wstest-msgs)
+     (message "ws frame: %S" (websocket-frame-payload frame)))
    (lambda () (setq wstest-closed t))))
 
 (defun wstest-pop-to-debug ()
@@ -31,7 +35,7 @@
 (assert (websocket-openp wstest-ws))
 
 (assert (null wstest-msgs))
-(websocket-send wstest-ws "Hi!")
+(websocket-send-text wstest-ws "Hi!")
 (sleep-for 0.1)
 (assert (equal (car wstest-msgs) "You said: Hi!"))
 
