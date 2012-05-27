@@ -225,8 +225,7 @@ the frame finishes.  If the frame is not completed, return NIL."
            (let ((masking-key (substring s (+ 1 (cdr payload-len))
                                          (+ 5 (cdr payload-len)))))
              (websocket-mask masking-key unmasked-payload))
-         unmasked-payload
-         )
+         unmasked-payload)
        :length payload-end
        :completep (> fin 0)))))
 
