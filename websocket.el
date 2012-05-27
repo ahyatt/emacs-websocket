@@ -297,7 +297,7 @@ You can log errors by setting variable `websocket-debug' to t."
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
 
-(defun websocket-error (websocket msg &rest args)
+(defun websocket-error (msg &rest args)
   "Report error message MSG."
   (unless websocket-ignore-error
     (apply 'message msg args))
@@ -336,7 +336,10 @@ slot of WEBSOCKET.  If the frame is a ping, we reply with a pong.
 If the frame is a close, we terminate the connection."
   (let ((opcode (websocket-frame-opcode frame)))
     (cond ((memq opcode '(continuation text binary))
-           (funcall (websocket-filter websocket) frame))
+           (condition-case err
+               (funcall (websocket-filter websocket) frame)
+             (error (websocket-error "Got error from the filter function: %s"
+                                     (error-message-string err)))))
           ((eq opcode 'ping)
            (websocket-send websocket
                            (make-websocket-frame :opcode 'pong :completep t)))

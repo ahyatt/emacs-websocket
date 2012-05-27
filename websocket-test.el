@@ -28,30 +28,6 @@
 (require 'websocket)
 (eval-when-compile (require 'cl))
 
-(defun websocket-test-get-filtered-response-with-error
-  (outputs &optional callback)
-  (let* ((packet-data nil)
-         (websocket
-          (make-websocket :conn "fake-conn"
-                          :filter (lambda (packet)
-                                    (push packet packet-data)
-                                    (when callback (funcall callback)))
-                          :close-callback (lambda (not-called) (assert nil))
-                          :url "ws://foo/bar")))
-         err-list)
-    (dolist (output outputs)
-      (condition-case err
-          (websocket-outer-filter websocket output)
-        (error (push err err-list))))
-    (list (nreverse packet-data) (nreverse err-list)))
-
-(defun websocket-test-get-filtered-response (outputs)
-  (destructuring-bind (packet-data err-list)
-      (websocket-test-get-filtered-response-with-error outputs)
-    (assert (eq (length err-list) 0))
-    packet-data))
-
-
 (ert-deftest websocket-genbytes-length ()
   (loop repeat 100
         do (should (= (string-bytes (websocket-genbytes 16)) 16))))
@@ -262,3 +238,54 @@
       (should (websocket-header-read-p fake-ws))
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
       (should (equal (list frame2 frame1) processed-frames)))))
+
+(defun websocket-test-get-filtered-response-with-error
+  (frames &optional callback)
+  (let* ((filter-frames)
+         (websocket
+          (make-websocket :conn "fake-conn"
+                          :filter (lambda (frame)
+                                    (push frame filter-frames)
+                                    (when callback (funcall callback)))
+                          :close-callback (lambda (not-called) (assert nil))
+                          :url "ws://foo/bar"
+                          :accept-string t))
+         err-list)
+    (dolist (frame frames)
+      (condition-case err
+          (websocket-process-frame websocket frame)
+        (error (push err err-list))))
+    (list (nreverse filter-frames) (nreverse err-list))))
+
+(defun websocket-test-get-filtered-response (frames)
+  (destructuring-bind (filter-frames err-list)
+      (websocket-test-get-filtered-response-with-error frames)
+    (assert (eq (length err-list) 0))
+    filter-frames))
+
+(ert-deftest websocket-filter-handle-error-in-filter ()
+  (let ((foo-frame (make-websocket-frame :opcode 'text
+                                   :payload "foo"
+                                   :completep t))
+        (bar-frame (make-websocket-frame :opcode 'text
+                                         :payload "bar"
+                                         :completep t)))
+    (destructuring-bind (filter-frames err-list)
+        (websocket-test-get-filtered-response-with-error
+         (list foo-frame bar-frame)
+         (lambda () (error "See if websocket can handle this")))
+      (should (equal filter-frames (list foo-frame bar-frame)))
+      (should (equal err-list nil)))
+    (destructuring-bind (filter-frames err-list)
+      (websocket-test-get-filtered-response-with-error
+       (list foo-frame bar-frame)
+       (lambda () "Raise another type of error" (/ 1 0)))
+    (should (equal filter-frames (list foo-frame bar-frame)))
+    (should (equal err-list nil)))
+    (destructuring-bind (filter-frames err-list)
+      (websocket-test-get-filtered-response-with-error
+       (list foo-frame bar-frame)
+       (lambda () (error "See if websocket can handle this")))
+    (should (equal filter-frames (list foo-frame bar-frame)))
+    (should (equal err-list nil)))))
+
