@@ -49,16 +49,17 @@ URL of the connection.")
   "Set to true to suppress error messages.")
 
 (defconst websocket-guid "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-  "The websocket GUID as defined in RFC 6455. Do not change
-  unless the RFC changes.")
+  "The websocket GUID as defined in RFC 6455.
+Do not change unless the RFC changes.")
 
 (defvar websocket-require-server-accept t
-  "If true, we require the correct Sec-WebSocket-Accept header
-as part of the connection handshake.")
+  "If true, we check the Sec-WebSocket-Accept header.
+This is required by the RFC as part of the connection
+handshake.")
 
 (defvar websocket-mask-frames t
-  "If true, we mask frames as defined in the spec.  This is
-recommended to be true, and some servers will refuse to
+  "If true, we mask frames as defined in the spec.
+This is recommended to be true, and some servers will refuse to
 communicate with unmasked clients.")
 
 (defun websocket-genbytes (nbytes)
@@ -121,8 +122,7 @@ NBYTES much be a power of 2, up to 8."
      `((:val . ,val)))))
 
 (defun websocket-get-opcode (s)
-  "Retrieve the opcode from the dword at the start of the frame
-given by string."
+  "Retrieve the opcode from first byte of string S."
   (websocket-ensure-length s 1)
   (let ((opcode (logand #xf (websocket-get-bytes s 1))))
     (cond ((= opcode 0) 'continuation)
@@ -133,7 +133,7 @@ given by string."
           ((= opcode 10) 'pong))))
 
 (defun websocket-get-payload-len (s)
-  "Parses out the payload length from the string.
+  "Parse out the payload length from the string S.
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
   (websocket-ensure-length s 1)
@@ -149,7 +149,7 @@ many bytes were consumed from the string."
 (defstruct websocket-frame opcode payload length completep)
 
 (defun websocket-mask (key data)
-  "Mask string DATA with string KEY according to the RFC.
+  "Using string KEY, mask string DATA according to the RFC.
 This is used to both mask and unmask data."
   (apply
    'string
@@ -186,7 +186,7 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                        (cond ((< (length payload) 126) (length payload))
                              ((< (length payload) 65536) 126)
                              (t 127)))))
-                   (when (and payloadp (>= (length payload) 126)) 
+                   (when (and payloadp (>= (length payload) 126))
                      (append (websocket-to-bytes (length payload)
                                           (cond ((< (length payload) 126) 1)
                                                 ((< (length payload) 65536) 2)
@@ -200,8 +200,8 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                              nil))))))
 
 (defun websocket-read-frame (s)
-  "Read a frame and return a `websocket-frame' struct with the contents.
-This only gets complete frames. Partial frames need to wait until
+  "Read from string S a `websocket-frame' struct with the contents.
+This only gets complete frames.  Partial frames need to wait until
 the frame finishes.  If the frame is not completed, return NIL."
   (catch 'websocket-incomplete-frame
     (websocket-ensure-length s 1)
@@ -237,8 +237,8 @@ FILTER, and if the connection is closed, then CLOSE-CALLBACK is
 called.  Errors from FILTER function will be ignored.  You should
 catch it in the FILTER function in order to recover from the
 error.  Errors will be messaged using `messsage' function.  To
-suppress messaging errors, set `websocket-ignore-error' to `t'.
-You can log errors by setting `websocket-debug' to `t'."
+suppress messaging errors, set `websocket-ignore-error' to t.
+You can log errors by setting variable `websocket-debug' to t."
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
@@ -293,11 +293,12 @@ You can log errors by setting `websocket-debug' to `t'."
     websocket))
 
 (defun websocket-get-debug-buffer-create (websocket)
+  "Get or create the buffer corresponding to WEBSOCKET."
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
 
 (defun websocket-error (websocket msg &rest args)
-  "Message error."
+  "Report error message MSG."
   (unless websocket-ignore-error
     (apply 'message msg args))
   (apply 'websocket-debug msg args))
@@ -314,10 +315,9 @@ You can log errors by setting `websocket-debug' to `t'."
           (insert "\n"))))))
 
 (defun websocket-verify-handshake (websocket output)
-  "Verify that OUTPUT contains a valid handshake.
-The handshake is based on the key contained in WEBSOCKET.  The
-output is assumed to have complete headers.  This function will
-either return t or call `error'."
+  "Based on WEBSOCKET's key, verify that OUTPUT contains a valid handshake.
+The output is assumed to have complete headers.  This function
+will either return t or call `error'."
   (let ((accept-string
          (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
     (websocket-debug websocket "Handshake received, checking for: %s" accept-string)
@@ -330,7 +330,7 @@ either return t or call `error'."
       (error "Incorrect handshake from websocket: is this really a websocket connection?"))))
 
 (defun websocket-process-frame (websocket frame)
-  "Process FRAME returned from WEBSOCKET.
+  "Using the WEBSOCKET's filter and connection, process the FRAME.
 If the frame has a payload, the frame is passed to the filter
 slot of WEBSOCKET.  If the frame is a ping, we reply with a pong.
 If the frame is a close, we terminate the connection."
@@ -344,12 +344,14 @@ If the frame is a close, we terminate the connection."
            (delete-process (websocket-conn websocket))))))
 
 (defun websocket-outer-filter (websocket output)
-  "Removes connection strings, only passes packets."
+  "Filter the WEBSOCKET server's OUTPUT.
+This will parse headers and process frames repeatedly until there
+is no more output or the connection closes."
   (websocket-debug websocket "Received: %s" output)
   (let ((start-point)
         (end-point 0)
         (text (concat (websocket-inflight-packet websocket) output))
-        (header-end-pos))    
+        (header-end-pos))
     ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
     (when (and (not (websocket-header-read-p websocket))
@@ -371,12 +373,12 @@ If the frame is a close, we terminate the connection."
     (setf (websocket-inflight-packet websocket) (substring text (or start-point 0)))))
 
 (defun websocket-send-text (websocket text)
-  "Send TEXT to the websocket as a complete frame."
+  "To the WEBSOCKET, send TEXT as a complete frame."
   (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
                                                   :completep t)))
 
 (defun websocket-send (websocket frame)
-  "Send the FRAME to the websocket server."
+  "To the WEBSOCKET server, send the FRAME."
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
                    (websocket-frame-opcode frame)
                    (websocket-frame-payload frame))
@@ -387,11 +389,11 @@ If the frame is a close, we terminate the connection."
                        (websocket-encode-frame frame)))
 
 (defun websocket-openp (websocket)
-  "Returns true if the websocket exists and is open."
+  "Check WEBSOCKET and return non-nil if it is open and connected."
   (and websocket (eq 'open (process-status (websocket-conn websocket)))))
 
 (defun websocket-close (websocket)
-  "Close the websocket and erase all the old websocket data."
+  "Close WEBSOCKET and erase all the old websocket data."
   (websocket-debug websocket "Closing websocket")
   (when (websocket-openp websocket)
     (websocket-send websocket
@@ -400,7 +402,7 @@ If the frame is a close, we terminate the connection."
   (kill-buffer (process-buffer (websocket-conn websocket))))
 
 (defun websocket-ensure-connected (websocket)
-  "If the websocket connection is closed, open it."
+  "If the WEBSOCKET connection is closed, open it."
   (unless (and (websocket-conn websocket)
                (ecase (process-status (websocket-conn websocket))
                  ((run open listen) t)
