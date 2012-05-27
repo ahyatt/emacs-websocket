@@ -289,3 +289,21 @@
     (should (equal filter-frames (list foo-frame bar-frame)))
     (should (equal err-list nil)))))
 
+(ert-deftest websocket-send ()
+  (let ((ws (make-websocket :conn t :url t :filter t :close-callback t
+                            :accept-string t)))
+    (flet ((websocket-ensure-connected (websocket))
+           (websocket-openp (websocket) t)
+           (process-send-string (conn string)))
+      ;; Just make sure there is no error.
+      (websocket-send ws (make-websocket-frame :opcode 'ping
+                                                       :completep t)))
+    (should-error (websocket-send ws
+                                  (make-websocket-frame :opcode 'text )))
+    (should-error (websocket-send ws
+                                  (make-websocket-frame :opcode 'close
+                                                        :payload "bye!"
+                                                        :completep t)))
+    (should-error (websocket-send ws
+                                  (make-websocket-frame :opcode :close)))))
+

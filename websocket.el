@@ -379,8 +379,18 @@ is no more output or the connection closes."
   (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
                                                   :completep t)))
 
+(defun websocket-check (frame)
+  "Check FRAME for correctness, returning true if correct."
+  (and (equal (not (memq (websocket-frame-opcode frame)
+                         '(continuation text binary)))
+              (and (not (websocket-frame-payload frame))
+                   (websocket-frame-completep frame)))))
+
 (defun websocket-send (websocket frame)
-  "To the WEBSOCKET server, send the FRAME."
+  "To the WEBSOCKET server, send the FRAME.
+This will raise an error if the frame is illegal."
+  (unless (websocket-check frame)
+    (error "Cannot send illegal frame to websocket"))
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
                    (websocket-frame-opcode frame)
                    (websocket-frame-payload frame))
