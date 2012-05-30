@@ -34,6 +34,7 @@
   (conn (assert nil) :read-only t)
   (filter (assert nil) :read-only t)
   (close-callback (assert nil) :read-only t)
+  (open-callback nil :read-only t)
   (url (assert nil) :read-only t)
   (accept-string (assert nil))
   (handshake-accept-passed-p nil)
@@ -363,7 +364,9 @@ is no more output or the connection closes."
       (when (and websocket-require-server-accept
                 (not (websocket-handshake-accept-passed-p websocket))
                 start-point)
-       (websocket-verify-handshake websocket text)))
+       (websocket-verify-handshake websocket text))
+      (when (websocket-open-callback websocket)
+        (funcall (websocket-open-callback websocket))))
     (when (websocket-header-read-p websocket)
       (unless start-point (setq start-point 0))
       (let ((current-frame))
