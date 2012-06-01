@@ -105,33 +105,63 @@
                  (substring websocket-test-masked-hello 0
                             (- (length websocket-test-masked-hello) (+ i 1)))))))
 
-(defun websocket-test-make-websocket-with-accept-string (s)
-  (make-websocket :conn "fake-conn" :url "ws://foo/bar" :filter t
-                  :close-callback t :accept-string s))
+(defun websocket-test-header-with-lines (&rest lines)
+  (mapconcat 'identity (append lines '("\r\n")) "\r\n"))
 
-(ert-deftest websocket-verify-handshake ()
-  ;; This examples comes from the RFC
-  (should (websocket-verify-handshake
-           (websocket-test-make-websocket-with-accept-string
-            "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
-           "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"))
-  (should-error (websocket-verify-handshake
-                 (websocket-test-make-websocket-with-accept-string
-                  "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
-                 "Sec-WebSocket-Accept: foo\r\n")))
+(ert-deftest websocket-verify-headers ()
+  (let ((accept "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        (invalid-accept "Sec-WebSocket-Accept: bad")
+        (upgrade "Upgrade: websocket")
+        (connection "Connection: upgrade")
+        (ws (websocket-inner-create
+             :conn "fake-conn" :url "ws://foo/bar"
+             :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="))
+        (ws-with-protocol
+         (websocket-inner-create
+             :conn "fake-conn" :url "ws://foo/bar"
+             :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+             :protocol "myprotocol")))
+    (should (websocket-verify-headers
+             ws
+             (websocket-test-header-with-lines accept upgrade connection)))
+    (should-error
+     (websocket-verify-headers
+      ws
+      (websocket-test-header-with-lines invalid-accept upgrade connection)))
+    (should-error (websocket-verify-headers
+                   ws
+                   (websocket-test-header-with-lines upgrade connection)))
+    (should-error (websocket-verify-headers
+                   ws
+                   (websocket-test-header-with-lines accept connection)))
+    (should-error (websocket-verify-headers
+                   ws
+                   (websocket-test-header-with-lines accept upgrade)))
+    (should-error (websocket-verify-headers
+                   ws-with-protocol
+                   (websocket-test-header-with-lines accept upgrade connection)))
+    (should-error
+     (websocket-verify-headers
+      ws-with-protocol
+      (websocket-test-header-with-lines accept upgrade connection
+                                        "Sec-Websocket-Protocol: foo")))
+    (should
+     (websocket-verify-headers
+      ws-with-protocol
+      (websocket-test-header-with-lines accept upgrade connection
+                                        "Sec-Websocket-Protocol: myprotocol")))))
 
 (ert-deftest websocket-process-frame ()
   (let* ((sent)
          (processed)
          (deleted)
-         (websocket (make-websocket :conn "fake-conn"
-                                    :url "ws://foo/bar"
-                                    :filter (lambda (frame)
-                                              (setq
-                                               processed
-                                               (websocket-frame-payload frame)))
-                                    :close-callback t
-                                    :accept-string "accept-string")))
+         (websocket (websocket-inner-create
+                     :conn t :url t
+                     :on-message (lambda (websocket frame)
+                                   (setq
+                                    processed
+                                    (websocket-frame-payload frame)))
+                     :accept-string t)))
     (dolist (opcode '(text binary continuation))
       (setq processed nil)
       (should (equal
@@ -206,19 +236,22 @@
            (websocket-openp (websocket) t)
            (kill-buffer (buffer))
            (process-buffer (conn)))
-      (websocket-close (make-websocket :conn "fake-conn"
-                                       :filter t
-                                       :url t
-                                       :accept-string t
-                                       :close-callback t))
+      (websocket-close (websocket-inner-create
+                        :conn "fake-conn"
+                        :url t
+                        :accept-string t))
       (should (equal sent-frames (list
                                   (make-websocket-frame :opcode 'close
                                                         :completep t)))))))
 
 (ert-deftest websocket-outer-filter ()
-  (let* ((fake-ws (make-websocket :conn t :filter t :url t
-                                  :accept-string t :close-callback t
-                                  :open-callback (lambda () (setq open-callback-called t))))
+  (let* ((fake-ws (websocket-inner-create
+                   :conn t :url t :accept-string t
+                   :on-open (lambda (websocket)
+                              (should (eq (websocket-ready-state websocket)
+                                          'open))
+                              (setq open-callback-called t)
+                              (error "Ignore me!"))))
          (processed-frames)
          (frame1 (make-websocket-frame :opcode 'text :payload "foo" :completep t
                                        :length 9))
@@ -231,8 +264,9 @@
            (websocket-encode-frame frame2))))
     (flet ((websocket-process-frame (websocket frame)
                                     (push frame processed-frames))
-           (websocket-verify-handshake (websocket output) t))
+           (websocket-verify-headers (websocket output) t))
       (websocket-outer-filter fake-ws "Sec-")
+      (should (eq (websocket-ready-state fake-ws) 'connecting))
       (should-not open-callback-called)
       (websocket-outer-filter fake-ws "WebSocket-Accept: acceptstring")
       (should-not open-callback-called)
@@ -240,7 +274,6 @@
                                        "\r\n\r\n"
                                        (substring websocket-frames 0 2)))
       (should open-callback-called)
-      (should (websocket-header-read-p fake-ws))
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
       (should (equal (list frame2 frame1) processed-frames)))))
 
@@ -248,13 +281,13 @@
   (frames &optional callback)
   (let* ((filter-frames)
          (websocket
-          (make-websocket :conn "fake-conn"
-                          :filter (lambda (frame)
-                                    (push frame filter-frames)
-                                    (when callback (funcall callback)))
-                          :close-callback (lambda (not-called) (assert nil))
-                          :url "ws://foo/bar"
-                          :accept-string t))
+          (websocket-inner-create
+           :conn "fake-conn"
+           :on-message (lambda (websocket frame)
+                         (push frame filter-frames)
+                         (when callback (funcall callback)))
+           :on-close (lambda (not-called) (assert nil))
+           :url t :accept-string t))
          err-list)
     (dolist (frame frames)
       (condition-case err
@@ -295,8 +328,7 @@
     (should (equal err-list nil)))))
 
 (ert-deftest websocket-send ()
-  (let ((ws (make-websocket :conn t :url t :filter t :close-callback t
-                            :accept-string t)))
+  (let ((ws (websocket-inner-create :conn t :url t :accept-string t)))
     (flet ((websocket-ensure-connected (websocket))
            (websocket-openp (websocket) t)
            (process-send-string (conn string)))

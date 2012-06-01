@@ -17,14 +17,15 @@
 (defvar wstest-msgs nil)
 (defvar wstest-closed nil)
 
-(setq websocket-require-server-accept t)
+(message "Opening the websocket")
 
 (defvar wstest-ws
   (websocket-open
    "ws://127.0.0.1:9999"
-   (lambda (frame) (push (websocket-frame-payload frame) wstest-msgs)
-     (message "ws frame: %S" (websocket-frame-payload frame)))
-   (lambda () (setq wstest-closed t))))
+   :on-message (lambda (websocket frame)
+                 (push (websocket-frame-payload frame) wstest-msgs)
+                 (message "ws frame: %S" (websocket-frame-payload frame)))
+   :on-close (lambda (websocket) (setq wstest-closed t))))
 
 (defun wstest-pop-to-debug ()
   "Open websocket log buffer. Not used in testing. Just for debugging."
