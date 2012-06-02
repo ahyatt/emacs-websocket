@@ -57,6 +57,9 @@ called.
 
 `on-open', `on-message' and `on-close' are described in
 `websocket-open'.
+
+The `server-extensions' slot lists the extensions accepted by the
+server.
 "
   ;; API
   (ready-state 'connecting)
@@ -68,6 +71,8 @@ called.
   ;; Other data - clients should not have to access this.
   (url (assert nil) :read-only t)
   (protocol nil :read-only t)
+  (extensions nil :read-only t)
+  server-extensions
   (conn (assert nil) :read-only t)
   (accept-string (assert nil))
   (inflight-input nil))
@@ -256,25 +261,33 @@ the frame finishes.  If the frame is not completed, return NIL."
        :length payload-end
        :completep (> fin 0)))))
 
-(defun* websocket-open (url &key protocol (on-open 'identity)
+(defun* websocket-open (url &key protocol extensions (on-open 'identity)
                             (on-message 'identity) (on-close 'identity))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
 the server that this client supports the protocol.  We will
 require that the server also has to support that protocol.
-Optionally you can specify
-:on-open, :on-message and :on-close callbacks as well.
 
-The on-open callback is called after the connection is
+Similar logic applies to EXTENSIONS, which is a list of conses,
+the car of which is a string naming the extension, and the cdr of
+which is the list of parameter strings to use for that extension.
+The parameter strings are of the form \"key=value\" or \"value\".
+EXTENSIONS can be NIL if none are in use.  An example value would
+be '(\"deflate-stream\" . (\"mux\" \"max-channels=4\")).
+
+Optionally you can specify
+ON_OPEN, ON-MESSAGE and ON-CLOSE callbacks as well.
+
+The ON-OPEN callback is called after the connection is
 established with the websocket as the only argument.  The return
 value is unused.
 
-The on-message callback is called after receiving a frame, and is
+The ON-MESSAGE callback is called after receiving a frame, and is
 called with the websocket as the first argument and
 `websocket-frame' struct as the second.  The return value is
 unused.
 
-The on-close callback is called after the connection is closed, or
+The ON-CLOSE callback is called after the connection is closed, or
 failed to open.  It is called with the websocket as the only
 argument, and the return value is unused.
 
@@ -308,6 +321,7 @@ variable `websocket-debug' to t."
                      :on-message on-message
                      :on-close on-close
                      :protocol protocol
+                     :extensions (mapcar 'car extensions)
                      :accept-string
                      (websocket-calculate-accept key))))
     (process-put conn :websocket websocket)
@@ -335,23 +349,36 @@ variable `websocket-debug' to t."
                                    (if (> (length path) 0) path "/"))))
     (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
                      key (websocket-accept-string websocket))
-    (process-send-string
-     conn
-     (format (concat "Host: %s\r\n"
-                     "Upgrade: websocket\r\n"
-                     "Connection: Upgrade\r\n"
-                     "Sec-WebSocket-Key: %s\r\n"
-                     "Origin: %s\r\n"
-                     "Sec-WebSocket-Version: 13\r\n"
-                     (when protocol
-                       "Sec-WebSocket-Protocol: %s\r\n")
-                     "\r\n")
-             (url-host (url-generic-parse-url url))
-             key
-             system-name
-             protocol))
+    (process-send-string conn
+                         (websocket-create-headers url key protocol extensions))
     (websocket-debug websocket "Websocket opened")
     websocket))
+
+(defun websocket-create-headers (url key protocol extensions)
+  "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
+These are defined as in `websocket-open'."
+  (format (concat "Host: %s\r\n"
+                  "Upgrade: websocket\r\n"
+                  "Connection: Upgrade\r\n"
+                  "Sec-WebSocket-Key: %s\r\n"
+                  "Origin: %s\r\n"
+                  "Sec-WebSocket-Version: 13\r\n"
+                  (when protocol
+                    "Sec-WebSocket-Protocol: %s\r\n")
+                  (when extensions
+                    (format "Sec-WebSocket-Extensions: %s\r\n"
+                            (mapconcat
+                             (lambda (ext)
+                               (concat (car ext)
+                                       (when (cdr ext) "; ")
+                                       (when (cdr ext)
+                                         (mapconcat 'identity (cdr ext) "; "))))
+                             extensions ", ")))
+                  "\r\n")
+          (url-host (url-generic-parse-url url))
+          key
+          system-name
+          protocol))
 
 (defun websocket-get-debug-buffer-create (websocket)
   "Get or create the buffer corresponding to WEBSOCKET."
@@ -378,7 +405,8 @@ variable `websocket-debug' to t."
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
 The output is assumed to have complete headers.  This function
-will either return t or call `error'."
+will either return t or call `error'.  This has the side-effect
+of populating the list of server extensions to WEBSOCKET."
   (websocket-debug websocket "Checking headers: %s" output)
   (let ((accept-string
          (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
@@ -399,7 +427,24 @@ will either return t or call `error'."
       (unless (string-match
                (format "\r\nSec-Websocket-Protocol: %s\r\n"
                        (websocket-protocol websocket)) output)
-        (error "Incorrect or missing protocol returned by the server."))))
+        (error "Incorrect or missing protocol returned by the server.")))
+    (let ((pos 0)
+          (extensions))
+      (while (and pos
+                  (string-match "\r\nSec-Websocket-Extensions: \\(.*\\)\r\n"
+                      output pos))
+        (when (setq pos (match-end 1))
+          (setq extensions (append extensions (split-string
+                                               (match-string 1 output) ", ?")))))
+      (let ((extra-extensions
+             (set-difference (mapcar (lambda (ext) (first (split-string ext "; ?")))
+                                     extensions)
+                             (websocket-extensions websocket)
+                             :test 'equal)))
+        (when extra-extensions
+          (error "Non-requested extensions returned by server: %s"
+                 extra-extensions)))
+      (setf (websocket-server-extensions websocket) extensions)))
   ;; return true
   t)
 

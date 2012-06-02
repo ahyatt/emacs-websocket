@@ -120,7 +120,12 @@
          (websocket-inner-create
              :conn "fake-conn" :url "ws://foo/bar"
              :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-             :protocol "myprotocol")))
+             :protocol "myprotocol"))
+        (ws-with-extensions
+         (websocket-inner-create
+             :conn "fake-conn" :url "ws://foo/bar"
+             :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+             :extensions '("ext1" "ext2"))))
     (should (websocket-verify-headers
              ws
              (websocket-test-header-with-lines accept upgrade connection)))
@@ -149,7 +154,50 @@
      (websocket-verify-headers
       ws-with-protocol
       (websocket-test-header-with-lines accept upgrade connection
-                                        "Sec-Websocket-Protocol: myprotocol")))))
+                                        "Sec-Websocket-Protocol: myprotocol")))
+    (should-error
+     (websocket-verify-headers
+      ws-with-extensions
+      (websocket-test-header-with-lines accept upgrade connection
+                                        "Sec-Websocket-Extensions: foo")))
+    (should
+     (websocket-verify-headers
+      ws-with-extensions
+      (websocket-test-header-with-lines
+       accept upgrade connection "Sec-Websocket-Extensions: ext1, ext2; a=1")))
+    (should (equal '("ext1" "ext2; a=1")
+                   (websocket-server-extensions ws-with-extensions)))
+    (should
+     (websocket-verify-headers
+      ws-with-extensions
+      (websocket-test-header-with-lines accept upgrade connection
+                                        "Sec-Websocket-Extensions: ext1"
+                                        "Sec-Websocket-Extensions: ext2; a=1")))
+    (should (equal '("ext1" "ext2; a=1")
+                   (websocket-server-extensions ws-with-extensions)))))
+
+(ert-deftest websocket-create-headers ()
+  (let ((system-name "mysystem")
+        (base-headers (concat "Host: www.example.com\r\n"
+                              "Upgrade: websocket\r\n"
+                              "Connection: Upgrade\r\n"
+                              "Sec-WebSocket-Key: key\r\n"
+                              "Origin: mysystem\r\n"
+                              "Sec-WebSocket-Version: 13\r\n")))
+    (should (equal (concat base-headers "\r\n")
+                   (websocket-create-headers "ws://www.example.com/path"
+                                             "key" nil nil)))
+    (should (equal (concat base-headers
+                           "Sec-WebSocket-Protocol: protocol\r\n\r\n")
+                   (websocket-create-headers "ws://www.example.com/path"
+                                             "key" "protocol" nil)))
+    (should (equal
+             (concat base-headers
+                     "Sec-WebSocket-Extensions: ext1; a; b=2, ext2\r\n\r\n")
+             (websocket-create-headers "ws://www.example.com/path"
+                                       "key" nil
+                                       '(("ext1" . ("a" "b=2"))
+                                         ("ext2")))))))
 
 (ert-deftest websocket-process-frame ()
   (let* ((sent)
