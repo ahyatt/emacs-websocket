@@ -23,6 +23,15 @@
 ;;; Commentary:
 ;; This implements RFC 6455, which can be found at
 ;; http://tools.ietf.org/html/rfc6455.
+;;
+;; Websockets are created by calling `websocket-open', which returns a
+;; `websocket' struct.  Users of this library use the websocket
+;; struct, and can call methods `websocket-send-text', which sends
+;; text over the websocket, or `websocket-send', which sends a
+;; `websocket-frame' struct, enabling finer control of what is sent.
+;; A calback is passed to `websocket-open' that will retrieve
+;; websocket frames called from the websocket.  Websockets are
+;; eventually closed with `websocket-close'.
 
 (require 'bindat)
 (require 'url-parse)
