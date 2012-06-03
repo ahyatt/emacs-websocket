@@ -108,6 +108,11 @@
 (defun websocket-test-header-with-lines (&rest lines)
   (mapconcat 'identity (append lines '("\r\n")) "\r\n"))
 
+(ert-deftest websocket-verify-response-code ()
+  (should (websocket-verify-response-code "HTTP/1.1 101"))
+  (should-error (websocket-verify-response-code "HTTP/1.1 400"))
+  (should-error (websocket-verify-response-code "HTTP/1.1 200")))
+
 (ert-deftest websocket-verify-headers ()
   (let ((accept "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
         (invalid-accept "Sec-WebSocket-Accept: bad")
@@ -312,6 +317,7 @@
            (websocket-encode-frame frame2))))
     (flet ((websocket-process-frame (websocket frame)
                                     (push frame processed-frames))
+           (websocket-verify-response-code (output) t)
            (websocket-verify-headers (websocket output) t))
       (websocket-outer-filter fake-ws "Sec-")
       (should (eq (websocket-ready-state fake-ws) 'connecting))
@@ -324,6 +330,23 @@
       (should open-callback-called)
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
       (should (equal (list frame2 frame1) processed-frames)))))
+
+(ert-deftest websocket-outer-filter-bad-connection ()
+  (let* ((on-open-calledp)
+         (websocket-closed-calledp)
+         (fake-ws (websocket-inner-create
+                   :conn t :url t :accept-string t
+                   :on-open (lambda (websocket)
+                              (setq on-open-calledp t)))))
+    (flet ((websocket-verify-response-code (output) t)
+           (websocket-verify-headers (websocket output) (error "Bad headers!"))
+           (websocket-close (websocket) (setq websocket-closed-calledp t)))
+      (condition-case err
+          (progn (websocket-outer-filter fake-ws "HTTP/1.1 101\r\n\r\n")
+                 (error "Should have thrown an error!"))
+        (error
+         (should-not on-open-calledp)
+         (should websocket-closed-calledp))))))
 
 (defun websocket-test-get-filtered-response-with-error
   (frames &optional callback)

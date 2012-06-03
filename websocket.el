@@ -402,6 +402,17 @@ These are defined as in `websocket-open'."
           (insert (apply 'format (append (list msg) args)))
           (insert "\n"))))))
 
+(defun websocket-verify-response-code (output)
+  "Verify that OUTPUT contains a valid HTTP response code.
+The only acceptable one to websocket is responce code 101.
+A t value will be returned on success, and an error thrown
+if not."
+  (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
+  (unless (equal "101" (match-string 1 output))
+       (error "Bad HTTP response code while opening websocket connection: %s"
+              (match-string 1 output)))
+  t)
+
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
 The output is assumed to have complete headers.  This function
@@ -469,7 +480,8 @@ If the frame is a close, we terminate the connection."
 (defun websocket-outer-filter (websocket output)
   "Filter the WEBSOCKET server's OUTPUT.
 This will parse headers and process frames repeatedly until there
-is no more output or the connection closes."
+is no more output or the connection closes.  If the websocket
+connection is invalid, the connection will be closed."
   (websocket-debug websocket "Received: %s" output)
   (let ((start-point)
         (end-point 0)
@@ -480,7 +492,13 @@ is no more output or the connection closes."
     (when (and (eq 'connecting (websocket-ready-state websocket))
                (setq header-end-pos (string-match "\r\n\r\n" text))
                (setq start-point (+ 4 header-end-pos)))
-      (websocket-verify-headers websocket text)
+      (condition-case err
+          (progn
+            (websocket-verify-response-code text)
+            (websocket-verify-headers websocket text))
+        (error
+         (websocket-close websocket)
+         (error err)))
       (setf (websocket-ready-state websocket) 'open)
       (condition-case err
           (funcall (websocket-on-open websocket) websocket)
