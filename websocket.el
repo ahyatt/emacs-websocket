@@ -318,7 +318,9 @@ variable `websocket-debug' to t."
                    (make-network-process :name name
                                          :buffer buf-name
                                          :host (url-host url-struct)
-                                         :service (url-port url-struct)
+                                         :service (if (= 0 (url-port url-struct))
+                                                      80
+                                                    (url-port url-struct))
                                          :nowait nil)
                  (if (equal (url-type url-struct) "wss")
                      (error "Not implemented yet")
@@ -343,14 +345,14 @@ variable `websocket-debug' to t."
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
          (websocket-debug websocket
-                          "State change to %s" change))
-       (unless (eq 'closed (websocket-ready-state websocket))
-         (condition-case err
-             (funcall (websocket-on-close websocket)
-                      websocket)
-           (error (websocket-error
-                   websocket
-                   "Got error from the op-close function: %s"))))))
+                          "State change to %s" change)
+         (unless (eq 'closed (websocket-ready-state websocket))
+           (condition-case err
+               (funcall (websocket-on-close websocket)
+                        websocket)
+             (error (websocket-error
+                     websocket
+                     "Got error from the op-close function: %s")))))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
