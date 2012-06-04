@@ -459,10 +459,12 @@ of populating the list of server extensions to WEBSOCKET."
           (setq extensions (append extensions (split-string
                                                (match-string 1 output) ", ?")))))
       (let ((extra-extensions
-             (set-difference (mapcar (lambda (ext) (first (split-string ext "; ?")))
-                                     extensions)
-                             (websocket-extensions websocket)
-                             :test 'equal)))
+             (mapcan (lambda (ext) (when (not
+                                     (member
+                                      (first (split-string ext "; ?"))
+                                      (websocket-extensions websocket)))
+                                (list (first (split-string ext "; ?")))))
+                     extensions)))
         (when extra-extensions
           (error "Non-requested extensions returned by server: %s"
                  extra-extensions)))
@@ -579,8 +581,11 @@ connecting or open."
                  ((stop exit signal closed connect failed nil) nil)))
     (websocket-close websocket)
     (websocket-open (websocket-url websocket)
-                      (websocket-filter websocket)
-                      (websocket-close-callback websocket))))
+                    :protocol (websocket-protocol websocket)
+                    :extensions (websocket-extensions websocket)
+                    :on-open (websocket-on-open websocket)
+                    :on-message (websocket-on-message websocket)
+                    :on-close (websocket-on-close websocket))))
 
 (provide 'websocket)
 
