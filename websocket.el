@@ -29,9 +29,11 @@
 ;; struct, and can call methods `websocket-send-text', which sends
 ;; text over the websocket, or `websocket-send', which sends a
 ;; `websocket-frame' struct, enabling finer control of what is sent.
-;; A calback is passed to `websocket-open' that will retrieve
+;; A callback is passed to `websocket-open' that will retrieve
 ;; websocket frames called from the websocket.  Websockets are
 ;; eventually closed with `websocket-close'.
+;;
+;; Currently secure websockets (with wss addresses) are not supported.
 
 (require 'bindat)
 (require 'url-parse)
@@ -50,10 +52,7 @@ API methods are prefixed with \"websocket-\" and take a websocket
 as an argument, so the distrinction between the struct API and
 the additional helper APIs are not visible to the caller.
 
-The websocket is created with `websocket-open', which takes a
-url, an optional protocol string, and optional handlers, and
-returns a websocket.  If the protocol is specified, the client
-must support that protocol or the websocket connection will fail.
+A websocket struct is created with `websocket-open'.
 
 `ready-state' contains one of 'connecting, 'open, or
 'closed, depending on the state of the websocket.
@@ -76,12 +75,12 @@ server.
   on-open
   on-message
   on-close
+  server-extensions
 
   ;; Other data - clients should not have to access this.
   (url (assert nil) :read-only t)
   (protocol nil :read-only t)
   (extensions nil :read-only t)
-  server-extensions
   (conn (assert nil) :read-only t)
   (accept-string (assert nil))
   (inflight-input nil))
