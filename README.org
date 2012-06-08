@@ -1,0 +1,8 @@
+This is a elisp library for websocket clients to talk to websocket
+servers. This library is designed to be used by other library writers,
+to write apps that use websockets, and is not useful by itself.
+
+An example of how to use the library is in the
+[[https://github.com/ahyatt/emacs-websocket/blob/master/websocket-functional-test.el][websocket-functional-test.el]] file.
+
+Currently, this library only supports unencrypted websockets.
