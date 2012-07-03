@@ -87,6 +87,9 @@ server.
   (accept-string (assert nil))
   (inflight-input nil))
 
+(defvar websocket-version "0.9"
+  "Version numbers of this version of websocket.el.")
+
 (defvar websocket-debug nil
   "Set to true to output debugging info to a per-websocket buffer.
 The buffer is ` *websocket URL debug*' where URL is the
