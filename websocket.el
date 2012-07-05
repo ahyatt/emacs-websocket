@@ -459,13 +459,12 @@ of populating the list of server extensions to WEBSOCKET."
         (when (setq pos (match-end 1))
           (setq extensions (append extensions (split-string
                                                (match-string 1 output) ", ?")))))
-      (let ((extra-extensions
-             (mapcan (lambda (ext) (when (not
-                                     (member
-                                      (first (split-string ext "; ?"))
-                                      (websocket-extensions websocket)))
-                                (list (first (split-string ext "; ?")))))
-                     extensions)))
+      (let ((extra-extensions))
+        (dolist (ext extensions)
+          (when (not (member
+                      (first (split-string ext "; ?"))
+                      (websocket-extensions websocket)))
+            (add-to-list 'extra-extensions (first (split-string ext "; ?")))))
         (when extra-extensions
           (error "Non-requested extensions returned by server: %s"
                  extra-extensions)))
