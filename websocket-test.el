@@ -245,7 +245,11 @@
   (should (equal 300 (websocket-get-bytes (websocket-to-bytes 300 2) 2)))
   (should (equal 70000 (websocket-get-bytes (websocket-to-bytes 70000 8) 8)))
   (should-error (websocket-to-bytes 30 3))
-  (should-error (websocket-to-bytes 300 1)))
+  (should-error (websocket-to-bytes 300 1))
+  ;; I'd like to test the error for 32-byte systems on 8-byte lengths,
+  ;; but elisp does not allow us to temporarily set constants such as
+  ;; most-positive-fixnum.
+  )
 
 (ert-deftest websocket-encode-frame ()
   ;; We've tested websocket-read-frame, now we can use that to help

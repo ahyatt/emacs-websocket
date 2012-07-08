@@ -156,9 +156,16 @@ NBYTES much be a power of 2, up to 8."
       (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
              val nbytes))
   (if (= nbytes 8)
-      (bindat-pack `((:val vec 2 u32))
-                   `((:val . [,(/ val 4294967296)
-                              ,(mod val 4294967296)])))
+      (progn
+        (when (calc-eval "$ < 4294967296" 'pred most-positive-fixnum)
+          (error "Could not send an 8-byte value on this version of emacs.
+A 64-bit version of emacs may solve your problem."))
+        ;; Need to use calc even though at this point things are manageable,
+        ;; since some emacs cannot parse the value 4294967296, even if
+        ;; they never evaluate it.
+        (bindat-pack `((:val vec 2 u32))
+                     `((:val . [,(calc-eval "floor($ / 4294967296)" 'raw val)
+                                ,(calc-eval "$ % 4294967296" 'raw val)]))))
     (bindat-pack
      `((:val ,(cond ((= nbytes 1) 'u8)
                     ((= nbytes 2) 'u16)
