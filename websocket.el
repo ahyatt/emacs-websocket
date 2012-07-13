@@ -320,7 +320,7 @@ EXTENSIONS can be NIL if none are in use.  An example value would
 be '(\"deflate-stream\" . (\"mux\" \"max-channels=4\")).
 
 Optionally you can specify
-ON_OPEN, ON-MESSAGE and ON-CLOSE callbacks as well.
+ON-OPEN, ON-MESSAGE and ON-CLOSE callbacks as well.
 
 The ON-OPEN callback is called after the connection is
 established with the websocket as the only argument.  The return
