@@ -107,6 +107,30 @@ Do not change unless the RFC changes.")
 This is recommended to be true, and some servers will refuse to
 communicate with unmasked clients.")
 
+(defmacro websocket-document-function (function docstring)
+  "Document FUNCTION with DOCSTRING.  Use this for defstruct accessor etc."
+  (declare (indent defun)
+           (doc-string 2))
+  `(put ',function 'function-documentation ,docstring))
+
+(websocket-document-function websocket-on-open
+  "Accessor for websocket on-open callback.
+See `websocket-open' for details.
+
+\(fn WEBSOCKET)")
+
+(websocket-document-function websocket-on-message
+  "Accessor for websocket on-message callback.
+See `websocket-open' for details.
+
+\(fn WEBSOCKET)")
+
+(websocket-document-function websocket-on-close
+  "Accessor for websocket on-close callback.
+See `websocket-open' for details.
+
+\(fn WEBSOCKET)")
+
 (defun websocket-genbytes (nbytes)
   "Generate NBYTES random bytes."
   (let ((s (make-string nbytes ?\s)))
