@@ -129,6 +129,12 @@ See `websocket-open' for details.
 
 \(fn WEBSOCKET)")
 
+(websocket-document-function websocket-on-error
+  "Accessor for websocket on-error callback.
+See `websocket-open' for details.
+
+\(fn WEBSOCKET)")
+
 (defun websocket-genbytes (nbytes)
   "Generate NBYTES random bytes."
   (let ((s (make-string nbytes ?\s)))
