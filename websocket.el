@@ -65,8 +65,8 @@ subprocess.  There may, in fact, be output data buffered,
 however, when the `on-message' or `close-callback' callbacks are
 called.
 
-`on-open', `on-message' and `on-close' are described in
-`websocket-open'.
+`on-open', `on-message', `on-close', and `on-error' are described
+in `websocket-open'.
 
 The `server-extensions' slot lists the extensions accepted by the
 server.
@@ -77,6 +77,7 @@ server.
   on-open
   on-message
   on-close
+  on-error
   server-extensions
 
   ;; Other data - clients should not have to access this.
@@ -94,9 +95,6 @@ server.
   "Set to true to output debugging info to a per-websocket buffer.
 The buffer is ` *websocket URL debug*' where URL is the
 URL of the connection.")
-
-(defvar websocket-ignore-error nil
-  "Set to true to suppress error messages.")
 
 (defconst websocket-guid "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
   "The websocket GUID as defined in RFC 6455.
@@ -281,8 +279,13 @@ the frame finishes.  If the frame is not completed, return NIL."
        :length payload-end
        :completep (> fin 0)))))
 
+(defun websocket-default-error-handler (websocket type err)
+  "The default error handler used to handle errors in callbacks."
+  (message "Error found in callback `%S': %s" type (cdr err)))
+
 (defun* websocket-open (url &key protocol extensions (on-open 'identity)
-                            (on-message 'identity) (on-close 'identity))
+                            (on-message (lambda (w f))) (on-close 'identity)
+                            (on-error 'websocket-default-error-handler))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
 the server that this client supports the protocol.  We will
@@ -311,14 +314,17 @@ The ON-CLOSE callback is called after the connection is closed, or
 failed to open.  It is called with the websocket as the only
 argument, and the return value is unused.
 
+The ON-ERROR callback is called when any of the other callbacks
+have an error.  It takes the websocket as the first argument, and
+a symbol as the second argument either `on-open', `on-message',
+or `on-close', and the error as the third argument. Do NOT
+rethrow the error, or else you may miss some websocket messages.
+You similarly must not generate any other errors in this method.
+If not specified, `websocket-default-error-handler' is used.
+
 For each of these event handlers, the client code can store
 arbitrary data in the `client-data' slot in the returned
-websocket. Errors from the callbacks will be ignored.  You should
-catch it in the callback function in order to recover from the
-error.  Errors not caught will be messaged using `messsage'
-function.  To suppress messaging errors, set
-`websocket-ignore-error' to t.  You can log errors by setting
-variable `websocket-debug' to t."
+websocket."
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
@@ -342,6 +348,7 @@ variable `websocket-debug' to t."
                      :on-open on-open
                      :on-message on-message
                      :on-close on-close
+                     :on-error on-error
                      :protocol protocol
                      :extensions (mapcar 'car extensions)
                      :accept-string
@@ -358,12 +365,11 @@ variable `websocket-debug' to t."
          (websocket-debug websocket
                           "State change to %s" change)
          (unless (eq 'closed (websocket-ready-state websocket))
-           (condition-case err
+           (condition-case
                (funcall (websocket-on-close websocket)
                         websocket)
-             (error (websocket-error
-                     websocket
-                     "Got error from the op-close function: %s")))))))
+               (error (funcall (websocket-on-error websocket)
+                               websocket 'on-close err)))))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
@@ -484,21 +490,24 @@ of populating the list of server extensions to WEBSOCKET."
 
 (defun websocket-process-frame (websocket frame)
   "Using the WEBSOCKET's filter and connection, process the FRAME.
-If the frame has a payload, the frame is passed to the filter
-slot of WEBSOCKET.  If the frame is a ping, we reply with a pong.
-If the frame is a close, we terminate the connection."
+This returns a lambda that should be executed when all frames have
+been processed.  If the frame has a payload, the lambda has the frame
+passed to the filter slot of WEBSOCKET.  If the frame is a ping,
+the lambda has a reply with a pong.  If the frame is a close, the lambda
+has connection termination."
   (let ((opcode (websocket-frame-opcode frame)))
-    (cond ((memq opcode '(continuation text binary))
-           (condition-case err
-               (funcall (websocket-on-message websocket) websocket frame)
-             (error (websocket-error websocket
-                                     "Got error from the on-message function: %s"
-                                     (error-message-string err)))))
-          ((eq opcode 'ping)
-           (websocket-send websocket
-                           (make-websocket-frame :opcode 'pong :completep t)))
-          ((eq opcode 'close)
-           (delete-process (websocket-conn websocket))))))
+    (lexical-let ((lex-ws websocket)
+                  (lex-frame frame))
+      (cond ((memq opcode '(continuation text binary))
+             (lambda () (condition-case err
+                       (funcall (websocket-on-message websocket) lex-ws lex-frame)
+                     (error (funcall (websocket-on-error websocket)
+                                     websocket 'on-message err)))))
+            ((eq opcode 'ping)
+             (lambda () (websocket-send lex-ws
+                                   (make-websocket-frame :opcode 'pong :completep t))))
+            ((eq opcode 'close)
+             (lambda () (delete-process (websocket-conn lex-ws))))))))
 
 (defun websocket-outer-filter (websocket output)
   "Filter the WEBSOCKET server's OUTPUT.
@@ -509,7 +518,8 @@ connection is invalid, the connection will be closed."
   (let ((start-point)
         (end-point 0)
         (text (concat (websocket-inflight-input websocket) output))
-        (header-end-pos))
+        (header-end-pos)
+        (processing-queue))
     ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
     (when (and (eq 'connecting (websocket-ready-state websocket))
@@ -525,18 +535,18 @@ connection is invalid, the connection will be closed."
       (setf (websocket-ready-state websocket) 'open)
       (condition-case err
           (funcall (websocket-on-open websocket) websocket)
-        (error (websocket-error websocket
-                                "Got error from the on-open function: %s"
-                                (error-message-string err)))))
+        (error (funcall (websocket-on-error websocket) websocket 'on-open err))))
     (when (eq 'open (websocket-ready-state websocket))
       (unless start-point (setq start-point 0))
       (let ((current-frame))
         (while (and (setq current-frame (websocket-read-frame
                                          (substring text start-point))))
-          (websocket-process-frame websocket current-frame)
+          (push (websocket-process-frame websocket current-frame) processing-queue)
           (incf start-point (websocket-frame-length current-frame)))))
     (setf (websocket-inflight-input websocket)
-        (substring text (or start-point 0)))))
+        (substring text (or start-point 0)))
+    (dolist (to-process (nreverse processing-queue))
+      (funcall to-process))))
 
 (defun websocket-send-text (websocket text)
   "To the WEBSOCKET, send TEXT as a complete frame."
@@ -595,7 +605,8 @@ connecting or open."
                     :extensions (websocket-extensions websocket)
                     :on-open (websocket-on-open websocket)
                     :on-message (websocket-on-message websocket)
-                    :on-close (websocket-on-close websocket))))
+                    :on-close (websocket-on-close websocket)
+                    :on-error (websocket-on-error websocket))))
 
 (provide 'websocket)
 

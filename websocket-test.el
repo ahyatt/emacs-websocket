@@ -225,23 +225,39 @@
       (should (equal
                "hello"
                (progn
-                 (websocket-process-frame
-                  websocket
-                  (make-websocket-frame :opcode opcode :payload "hello"))
+                 (funcall (websocket-process-frame
+                   websocket
+                   (make-websocket-frame :opcode opcode :payload "hello")))
                  processed))))
     (setq sent nil)
     (flet ((websocket-send (websocket content) (setq sent content)))
       (should (equal
                (make-websocket-frame :opcode 'pong :completep t)
                (progn
-                 (websocket-process-frame websocket
-                                          (make-websocket-frame :opcode 'ping))
+                 (funcall (websocket-process-frame websocket
+                                           (make-websocket-frame :opcode 'ping)))
                  sent))))
     (flet ((delete-process (conn) (setq deleted t)))
       (should (progn
-                (websocket-process-frame websocket
-                                         (make-websocket-frame :opcode 'close))
+                (funcall
+                 (websocket-process-frame websocket
+                                          (make-websocket-frame :opcode 'close)))
                 deleted)))))
+
+(ert-deftest websocket-process-frame-error-handling ()
+  (let* ((error-called)
+         (websocket (websocket-inner-create
+                     :conn t :url t :accept-string t
+                     :on-message (lambda (websocket frame)
+                                   (message "In on-message")
+                                   (error "err"))
+                     :on-error (lambda (ws type err)
+                                 (should (eq 'on-message type))
+                                 (setq error-called t)))))
+    (funcall (websocket-process-frame websocket
+                                      (make-websocket-frame :opcode 'text
+                                                            :payload "hello")))
+    (should error-called)))
 
 (ert-deftest websocket-to-bytes ()
   ;; We've tested websocket-get-bytes by itself, now we can use it to
@@ -316,7 +332,8 @@
                               (should (eq (websocket-ready-state websocket)
                                           'open))
                               (setq open-callback-called t)
-                              (error "Ignore me!"))))
+                              (error "Ignore me!"))
+                   :on-error (lambda (ws type err))))
          (processed-frames)
          (frame1 (make-websocket-frame :opcode 'text :payload "foo" :completep t
                                        :length 9))
@@ -327,8 +344,10 @@
           (concat
            (websocket-encode-frame frame1)
            (websocket-encode-frame frame2))))
-    (flet ((websocket-process-frame (websocket frame)
-                                    (push frame processed-frames))
+    (flet ((websocket-process-frame
+            (websocket frame)
+            (lexical-let ((frame frame))
+              (lambda () (push frame processed-frames))))
            (websocket-verify-response-code (output) t)
            (websocket-verify-headers (websocket output) t))
       (websocket-outer-filter fake-ws "Sec-")
@@ -359,56 +378,6 @@
         (error
          (should-not on-open-calledp)
          (should websocket-closed-calledp))))))
-
-(defun websocket-test-get-filtered-response-with-error
-  (frames &optional callback)
-  (let* ((filter-frames)
-         (websocket
-          (websocket-inner-create
-           :conn "fake-conn"
-           :on-message (lambda (websocket frame)
-                         (push frame filter-frames)
-                         (when callback (funcall callback)))
-           :on-close (lambda (not-called) (assert nil))
-           :url t :accept-string t))
-         err-list)
-    (dolist (frame frames)
-      (condition-case err
-          (websocket-process-frame websocket frame)
-        (error (push err err-list))))
-    (list (nreverse filter-frames) (nreverse err-list))))
-
-(defun websocket-test-get-filtered-response (frames)
-  (destructuring-bind (filter-frames err-list)
-      (websocket-test-get-filtered-response-with-error frames)
-    (assert (eq (length err-list) 0))
-    filter-frames))
-
-(ert-deftest websocket-filter-handle-error-in-filter ()
-  (let ((foo-frame (make-websocket-frame :opcode 'text
-                                   :payload "foo"
-                                   :completep t))
-        (bar-frame (make-websocket-frame :opcode 'text
-                                         :payload "bar"
-                                         :completep t)))
-    (destructuring-bind (filter-frames err-list)
-        (websocket-test-get-filtered-response-with-error
-         (list foo-frame bar-frame)
-         (lambda () (error "See if websocket can handle this")))
-      (should (equal filter-frames (list foo-frame bar-frame)))
-      (should (equal err-list nil)))
-    (destructuring-bind (filter-frames err-list)
-      (websocket-test-get-filtered-response-with-error
-       (list foo-frame bar-frame)
-       (lambda () "Raise another type of error" (/ 1 0)))
-    (should (equal filter-frames (list foo-frame bar-frame)))
-    (should (equal err-list nil)))
-    (destructuring-bind (filter-frames err-list)
-      (websocket-test-get-filtered-response-with-error
-       (list foo-frame bar-frame)
-       (lambda () (error "See if websocket can handle this")))
-    (should (equal filter-frames (list foo-frame bar-frame)))
-    (should (equal err-list nil)))))
 
 (ert-deftest websocket-send ()
   (let ((ws (websocket-inner-create :conn t :url t :accept-string t)))
