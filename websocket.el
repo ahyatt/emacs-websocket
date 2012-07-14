@@ -395,7 +395,7 @@ websocket."
          (websocket-debug websocket
                           "State change to %s" change)
          (unless (eq 'closed (websocket-ready-state websocket))
-           (condition-case
+           (condition-case err
                (funcall (websocket-on-close websocket)
                         websocket)
                (error (funcall (websocket-on-error websocket)
