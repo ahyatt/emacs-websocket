@@ -443,12 +443,6 @@ These are defined as in `websocket-open'."
   (get-buffer-create (format " *websocket %s debug*"
                              (websocket-url websocket))))
 
-(defun websocket-error (websocket msg &rest args)
-  "Report error message MSG."
-  (unless websocket-ignore-error
-    (apply 'message msg args))
-  (apply 'websocket-debug websocket msg args))
-
 (defun websocket-debug (websocket msg &rest args)
   "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
   (when websocket-debug
