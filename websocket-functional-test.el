@@ -4,6 +4,12 @@
 (require 'websocket)
 (eval-when-compile (require 'cl))
 
+;;;;;;;;;;;;;;;;;;;;;;;
+;; Local server test ;;
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(message "Testing with local server")
+
 (setq websocket-debug t)
 
 (defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
@@ -50,3 +56,33 @@
 (assert (null (websocket-openp wstest-ws)))
 
 (stop-process wstest-server-proc)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Remove server test, with wss ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(message "Testing with wss://echo.websocket.org")
+
+(setq wstest-ws
+  (websocket-open
+   "wss://echo.websocket.org"
+   :on-open (lambda (websocket)
+              (message "Websocket opened"))
+   :on-message (lambda (websocket frame)
+                 (push (websocket-frame-payload frame) wstest-msgs)
+                 (message "ws frame: %S" (websocket-frame-payload frame)))
+   :on-close (lambda (websocket)
+               (message "Websocket closed")
+               (setq wstest-closed t)))
+  wstest-msgs nil)
+
+(sleep-for 0.1)
+(assert (websocket-openp wstest-ws))
+(assert (null wstest-msgs))
+(websocket-send-text wstest-ws "Hi!")
+(sleep-for 0.1)
+(assert (equal (car wstest-msgs) "Hi!"))
+(websocket-close wstest-ws)
+
+(message "\nAll tests passed!\n")
+

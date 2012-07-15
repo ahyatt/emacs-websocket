@@ -6,8 +6,6 @@ to write apps that use websockets, and is not useful by itself.
 An example of how to use the library is in the
 [[https://github.com/ahyatt/emacs-websocket/blob/master/websocket-functional-test.el][websocket-functional-test.el]] file.
 
-Currently, this library only supports unencrypted websockets.
-
 * Version
 
 This version should be usable, but should have the following
@@ -23,5 +21,5 @@ requirements for a version 1.0:
 - [[https://github.com/tkf/emacs-ipython-notebook][Emacs IPython Notebook]]
 
 If you are using this module for your own emacs package, please let me
-by editing this file, adding your project, and sending a pull request
-to this repository.
+know by editing this file, adding your project, and sending a pull
+request to this repository.

@@ -34,8 +34,6 @@
 ;; A callback is passed to `websocket-open' that will retrieve
 ;; websocket frames called from the websocket.  Websockets are
 ;; eventually closed with `websocket-close'.
-;;
-;; Currently secure websockets (with wss addresses) are not supported.
 
 (require 'bindat)
 (require 'url-parse)
@@ -361,17 +359,19 @@ websocket."
          (buf-name (format " *%s*" name))
          (coding-system-for-read 'binary)
          (coding-system-for-write 'binary)
-         (conn (if (equal (url-type url-struct) "ws")
-                   (make-network-process :name name
-                                         :buffer buf-name
-                                         :host (url-host url-struct)
-                                         :service (if (= 0 (url-port url-struct))
-                                                      80
-                                                    (url-port url-struct))
-                                         :nowait nil)
-                 (if (equal (url-type url-struct) "wss")
-                     (error "Not implemented yet")
-                   (error "Unknown protocol"))))
+         (conn (if (member (url-type url-struct) '("ws" "wss"))
+                   (open-network-stream name (get-buffer-create buf-name)
+                                        (url-host url-struct)
+                                        (if (= 0 (url-port url-struct))
+                                                     (if (equal
+                                                          (url-type url-struct) "ws")
+                                                         80 443)
+                                                   (url-port url-struct))
+                                        :type (if (equal (url-type url-struct) "ws")
+                                                  'plain
+                                                'tls)
+                                        :nowait nil)
+                 (error "Unknown protocol")))
          (websocket (websocket-inner-create
                      :conn conn
                      :url url
@@ -609,7 +609,7 @@ This will raise an error if the frame is illegal."
 connecting or open."
   (and websocket
        (not (eq 'close (websocket-ready-state websocket)))
-       (eq 'open (process-status (websocket-conn websocket)))))
+       (member (process-status (websocket-conn websocket)) '(open run))))
 
 (defun websocket-close (websocket)
   "Close WEBSOCKET and erase all the old websocket data."
