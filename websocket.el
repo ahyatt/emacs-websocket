@@ -348,7 +348,9 @@ a symbol as the second argument either `on-open', `on-message',
 or `on-close', and the error as the third argument. Do NOT
 rethrow the error, or else you may miss some websocket messages.
 You similarly must not generate any other errors in this method.
-If not specified, `websocket-default-error-handler' is used.
+In case you want to debug errors, a call to the `debug' function
+in the callback method will enter the debugger.  If not
+specified, `websocket-default-error-handler' is used.
 
 For each of these event handlers, the client code can store
 arbitrary data in the `client-data' slot in the returned
