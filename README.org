@@ -8,13 +8,23 @@ An example of how to use the library is in the
 
 * Version
 
-This version should be usable, but should have the following
-requirements for a version 1.0:
+** Version 1.0 requiements
+This version should be usable, but needs the following:
 
-- Support for encrypted sockets.
 - 3 clients using this module.  Without this many clients, it's hard
   to be sure the API is right, or there isn't a hidden bug in the
   module.
+
+Notably, this project is experimenting with an eieio-based API (see
+the EIEIO branch).  Please send us any feedback about the API.
+
+** Version release checklist
+
+Each version that is released should be checked with this checklist:
+
+- [ ] All ert test passing
+- [ ] Functional test passing
+- [ ] websocket.el byte compiling cleanly
 
 * Existing clients:
 
@@ -23,3 +33,4 @@ requirements for a version 1.0:
 If you are using this module for your own emacs package, please let me
 know by editing this file, adding your project, and sending a pull
 request to this repository.
+
