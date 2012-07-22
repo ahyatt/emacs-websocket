@@ -103,6 +103,12 @@ Do not change unless the RFC changes.")
 This is recommended to be true, and some servers will refuse to
 communicate with unmasked clients.")
 
+(defvar websocket-callback-debug-on-error nil
+  "If true, when an error happens in a client callback, invoke the debugger.
+Having this on can cause issues with missing frames if the debugger is
+exited by quitting instead of continuing, so it's best to have this set
+to `nil' unless it is especially needed.")
+
 (defmacro websocket-document-function (function docstring)
   "Document FUNCTION with DOCSTRING.  Use this for defstruct accessor etc."
   (declare (indent defun)
@@ -139,6 +145,27 @@ See `websocket-open' for details.
     (dotimes (i nbytes)
       (aset s i (random 256)))
     s))
+
+(defun websocket-try-callback (websocket-callback callback-type websocket
+                                                  &rest rest)
+  "Invoke function WEBSOCKET-CALLBACK with WEBSOCKET and REST args.
+If an error happens, it is handled according to
+`websocket-callback-debug-on-error'."
+  ;; This looks like it should be able to done more efficiently, but
+  ;; I'm not sure that's the case.  We can't do it as a macro, since
+  ;; we want it to change whenever websocket-callback-debug-on-error
+  ;; changes.
+  (let ((args rest))
+    (push websocket args)
+    (if websocket-callback-debug-on-error
+        (condition-case err
+            (apply (funcall websocket-callback websocket) args)
+          ((debug error) (funcall (websocket-on-error websocket)
+                                  websocket callback-type err)))
+      (condition-case err
+          (apply (funcall websocket-callback websocket) args)
+        (error (funcall (websocket-on-error websocket) websocket
+                        callback-type err))))))
 
 (defun websocket-genkey ()
   "Generate a key suitable for the websocket handshake."
@@ -348,9 +375,10 @@ a symbol as the second argument either `on-open', `on-message',
 or `on-close', and the error as the third argument. Do NOT
 rethrow the error, or else you may miss some websocket messages.
 You similarly must not generate any other errors in this method.
-In case you want to debug errors, a call to the `debug' function
-in the callback method will enter the debugger.  If not
-specified, `websocket-default-error-handler' is used.
+If you want to debug errors, set
+`websocket-callback-debug-on-error' to `t', but this also can be
+dangerous is the debugger is quit out of.  If not specified,
+`websocket-default-error-handler' is used.
 
 For each of these event handlers, the client code can store
 arbitrary data in the `client-data' slot in the returned
@@ -397,11 +425,7 @@ websocket."
          (websocket-debug websocket
                           "State change to %s" change)
          (unless (eq 'closed (websocket-ready-state websocket))
-           (condition-case err
-               (funcall (websocket-on-close websocket)
-                        websocket)
-               (error (funcall (websocket-on-error websocket)
-                               websocket 'on-close err)))))))
+           (websocket-try-callback 'websocket-on-close 'on-close websocket)))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
@@ -525,10 +549,8 @@ has connection termination."
     (lexical-let ((lex-ws websocket)
                   (lex-frame frame))
       (cond ((memq opcode '(continuation text binary))
-             (lambda () (condition-case err
-                       (funcall (websocket-on-message websocket) lex-ws lex-frame)
-                     (error (funcall (websocket-on-error websocket)
-                                     websocket 'on-message err)))))
+             (lambda () (websocket-try-callback 'websocket-on-message 'on-message
+                                           lex-ws lex-frame)))
             ((eq opcode 'ping)
              (lambda () (websocket-send lex-ws
                                    (make-websocket-frame :opcode 'pong :completep t))))
@@ -559,9 +581,7 @@ connection is invalid, the connection will be closed."
          (websocket-close websocket)
          (error err)))
       (setf (websocket-ready-state websocket) 'open)
-      (condition-case err
-          (funcall (websocket-on-open websocket) websocket)
-        (error (funcall (websocket-on-error websocket) websocket 'on-open err))))
+      (websocket-try-callback 'websocket-on-open 'on-open websocket))
     (when (eq 'open (websocket-ready-state websocket))
       (unless start-point (setq start-point 0))
       (let ((current-frame))
