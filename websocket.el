@@ -155,7 +155,8 @@ If an error happens, it is handled according to
   ;; I'm not sure that's the case.  We can't do it as a macro, since
   ;; we want it to change whenever websocket-callback-debug-on-error
   ;; changes.
-  (let ((args rest))
+  (let ((args rest)
+        (debug-on-error websocket-callback-debug-on-error))
     (push websocket args)
     (if websocket-callback-debug-on-error
         (condition-case err
