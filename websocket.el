@@ -332,7 +332,7 @@ the frame finishes.  If the frame is not completed, return NIL."
                                          (+ 5 (cdr payload-len)))))
              (websocket-mask masking-key unmasked-payload))
          unmasked-payload)
-       :length payload-end
+       :length (if payloadp payload-end 1)
        :completep (> fin 0)))))
 
 (defun websocket-default-error-handler (websocket type err)
@@ -499,7 +499,6 @@ if not."
 The output is assumed to have complete headers.  This function
 will either return t or call `error'.  This has the side-effect
 of populating the list of server extensions to WEBSOCKET."
-  (websocket-debug websocket "Checking headers: %s" output)
   (let ((accept-string
          (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
     (websocket-debug websocket "Checking for accept header: %s" accept-string)
@@ -558,7 +557,8 @@ has connection termination."
              (lambda () (websocket-send lex-ws
                                    (make-websocket-frame :opcode 'pong :completep t))))
             ((eq opcode 'close)
-             (lambda () (delete-process (websocket-conn lex-ws))))))))
+             (lambda () (delete-process (websocket-conn lex-ws))))
+            (t (lambda ()))))))
 
 (defun websocket-outer-filter (websocket output)
   "Filter the WEBSOCKET server's OUTPUT.
