@@ -5,7 +5,7 @@
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Keywords: Communication
-;; Version: 0.91
+;; Version: 0.92
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -86,7 +86,7 @@ server.
   (accept-string (assert nil))
   (inflight-input nil))
 
-(defvar websocket-version "0.91"
+(defvar websocket-version "0.92"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
