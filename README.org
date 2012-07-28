@@ -6,6 +6,9 @@ to write apps that use websockets, and is not useful by itself.
 An example of how to use the library is in the
 [[https://github.com/ahyatt/emacs-websocket/blob/master/websocket-functional-test.el][websocket-functional-test.el]] file.
 
+This library is compatible with emacs 23 and 24, although only emacs
+24 support secure websockets.
+
 * Version
 
 ** Version 1.0 requiements
@@ -23,7 +26,7 @@ the EIEIO branch).  Please send us any feedback about the API.
 Each version that is released should be checked with this checklist:
 
 - [ ] All ert test passing
-- [ ] Functional test passing
+- [ ] Functional test passing on emacs 23 and 24
 - [ ] websocket.el byte compiling cleanly
 
 * Existing clients:

@@ -391,17 +391,19 @@ websocket."
          (coding-system-for-read 'binary)
          (coding-system-for-write 'binary)
          (conn (if (member (url-type url-struct) '("ws" "wss"))
-                   (open-network-stream name (get-buffer-create buf-name)
-                                        (url-host url-struct)
-                                        (if (= 0 (url-port url-struct))
-                                                     (if (equal
-                                                          (url-type url-struct) "ws")
-                                                         80 443)
-                                                   (url-port url-struct))
-                                        :type (if (equal (url-type url-struct) "ws")
-                                                  'plain
-                                                'tls)
-                                        :nowait nil)
+                   (let* ((type (if (equal (url-type url-struct) "ws")
+                                    'plain 'tls))
+                          (port (if (= 0 (url-port url-struct))
+                                    (if (eq type 'tls) 443 80)
+                                  (url-port url-struct)))
+                          (host (url-host url-struct))
+                          (buf (get-buffer-create buf-name)))
+                       (if (featurep 'tls)
+                           (open-network-stream name buf host port :type type :nowait nil)
+                         (when (eq type "wss")
+                           (error
+                            "This version of emacs does not support tls, so cannot connect to secure websockets (wss)"))
+                         (open-network-stream name buf host port)))
                  (error "Unknown protocol")))
          (websocket (websocket-inner-create
                      :conn conn
