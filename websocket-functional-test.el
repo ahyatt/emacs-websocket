@@ -1,6 +1,7 @@
 ;; Simple functional testing
 ;; Usage: emacs -batch -Q -L . -l websocket-functional-test.el
 
+(require 'tls)   ;; tests a particular bug we had on emacs 23
 (setq debug-on-error t)
 (require 'websocket)
 (eval-when-compile (require 'cl))
@@ -62,7 +63,7 @@
 ;; Remove server test, with wss ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(when (featurep 'tls)
+(when (>= (string-to-int (substring emacs-version 0 2)) 24)
   (message "Testing with wss://echo.websocket.org")
   (setq wstest-ws
         (websocket-open

@@ -398,12 +398,12 @@ websocket."
                                   (url-port url-struct)))
                           (host (url-host url-struct))
                           (buf (get-buffer-create buf-name)))
-                       (if (featurep 'tls)
-                           (open-network-stream name buf host port :type type :nowait nil)
-                         (when (eq type "wss")
-                           (error
-                            "This version of emacs does not support tls, so cannot connect to secure websockets (wss)"))
-                         (open-network-stream name buf host port)))
+                       (if (eq type 'plain)
+                           (make-network-process :name name :buffer buf :host host
+                                                 :service port :nowait nil)
+                         (condition-case-no-debug nil
+                             (open-network-stream name buf host port :type type :nowait nil)
+                           (wrong-number-of-arguments (error "No wss support in this Emacs version.")))))
                  (error "Unknown protocol")))
          (websocket (websocket-inner-create
                      :conn conn
