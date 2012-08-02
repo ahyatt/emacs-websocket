@@ -396,3 +396,34 @@
     (should-error (websocket-send ws
                                   (make-websocket-frame :opcode :close)))))
 
+(ert-deftest websocket-verify-client-headers ()
+  (let* ((http "HTTP/1.1")
+         (host "Host: authority")
+         (upgrade "Upgrade: websocket")
+         (key "Sec-Websocket-Key: key")
+         (version "Sec-Websocket-Version: 13")
+         (origin "Origin: origin")
+         (protocol "Sec-Websocket-Protocol: protocol")
+         (extensions1 "Sec-Websocket-Extensions: foo")
+         (extensions2 "Sec-Websocket-Extensions: bar; baz=2")
+         (all-required-headers (list host upgrade key version)))
+    ;; Test that all these headers are necessary
+    (should (equal
+             '(:key "key" :protocols ("protocol") :extensions ("foo" "bar; baz=2"))
+             (websocket-verify-client-headers
+              (mapconcat 'identity (append (list http "" protocol extensions1 extensions2)
+                                           all-required-headers) "\r\n"))))
+    (should (websocket-verify-client-headers
+              (mapconcat 'identity
+                         (mapcar 'upcase
+                                 (append (list http "" protocol extensions1 extensions2)
+                                         all-required-headers)) "\r\n")))
+    (dolist (header all-required-headers)
+      (should-not (websocket-verify-client-headers
+                   (mapconcat 'identity (append (list http "")
+                                                (remove header all-required-headers))
+                              "\r\n"))))
+    (should-not (websocket-verify-client-headers
+                 (mapconcat 'identity (append (list "HTTP/1.0" "") all-required-headers)
+                            "\r\n")))))
+

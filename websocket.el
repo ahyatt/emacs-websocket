@@ -77,13 +77,14 @@ server.
   on-close
   on-error
   server-extensions
+  (server-p nil :read-only t)
 
   ;; Other data - clients should not have to access this.
   (url (assert nil) :read-only t)
   (protocol nil :read-only t)
   (extensions nil :read-only t)
   (conn (assert nil) :read-only t)
-  (accept-string (assert nil))
+  accept-string
   (inflight-input nil))
 
 (defvar websocket-version "0.92.1"
@@ -441,6 +442,95 @@ websocket."
     (websocket-debug websocket "Websocket opened")
     websocket))
 
+(defun websocket-get-address (port)
+  "Get a non-loopback address to serve from."
+  (let ((net-addr
+         (block 'get-address
+           (dolist (interface (network-interface-list))
+             (when (not (member
+                         'loopback
+                         (nth 4 (network-interface-info (car interface)))))
+               (return-from 'get-address (cdr interface))))
+           (error "No non-loopback interface found"))))
+    (aset net-addr 4 port)
+    net-addr))
+
+(defun websocket-server-accept (server client message)
+  "Accept a new websocket connection from a client."
+  (message "Connected from %S: %s" client message)
+  (let ((ws (websocket-inner-create
+             :conn client
+             :on-open (or (process-get proc :on-open) 'identity)
+             :on-message (or (process-get proc :on-message) (lambda (ws frame)))
+             :on-error (or (process-get proc :on-error) 'identity)
+             :protocol (process-get proc :protocol)
+             :extensions (mapcar 'car (process-get proc :extensions)))))
+    (process-put client :websocket ws)
+    (set-process-filter client 'websocket-server-filter)))
+
+(defun websocket-verify-client-headers (output)
+  "Verify the headers from the WEBSOCKET client connection in OUTPUT.
+Unlike `websocket-verify-headers', this is a quieter routine.  We
+don't want to error due to a bad client, so we just print out
+messages and a plist containing `:key', the websocket key,
+`:protocols' and `:extensions'."
+  (block nil
+    (let ((case-fold-search t)
+          (plist))
+      (unless (string-match "^HTTP/1.1" output)
+        (message "Websocket client connection: HTTP/1.1 not found")
+        (return nil))
+      (unless (string-match "^Host: " output)
+        (message "Websocket client connection: Host header not found")
+        (return nil))
+      (unless (string-match "^Upgrade: websocket\r\n" output)
+        (message "Websocket client connection: Upgrade: websocket not found")
+        (return nil))
+      (if (string-match "^Sec-WebSocket-Key: \\([[:graph:]]+\\)\r\n" output)
+          (setq plist (plist-put plist :key (match-string 1 output)))
+        (message "Websocket client connect: No key sent")
+        (return nil))
+      (unless (string-match "^Sec-WebSocket-Version: 13" output)
+        (message "Websocket client connect: Websocket version 13 not found")
+        (return nil))
+      (when (string-match "^Sec-WebSocket-Protocol: \\([[:graph:]]+\\)\r\n" output)
+        (setq plist (plist-put plist :protocols (websocket-parse-repeated-field
+                                                 output
+                                                 "Sec-Websocket-Protocol"))))
+      (when (string-match "^Sec-WebSocket-Extensions: \\([[:graph:]]+\\)\r\n" output)
+        (setq plist (plist-put plist :extensions (websocket-parse-repeated-field
+                                                  output
+                                                  "Sec-Websocket-Extensions"))))
+      plist)))
+
+(defun websocket-server-filter (process output)
+  (let ((ws (process-get process :websocket)))
+    (cond ((eq (websocket-ready-state ws) 'connecting)
+           ;; check for connection string
+           (when (string-match "\r\n\r\n" output)
+             (if (websocket-verify-client-headers ws output)
+                 (progn (setf (websocket-ready-state ws) 'open)
+                        (websocket-server-filter process output))
+               (message "Invalid client headers found in: %s" output)
+               (websocket-close ws))))
+          ((eq (websocket-ready-state ws) 'open)
+           ;; process ouput
+           )
+          ((eq (websocket-ready-state ws) 'closed)
+           (message "WARNING: Should not have received further input on closed websocket")))))
+
+(defun* websocket-server (port &rest plist)
+  "Open a websocket server on PORT."
+  (let* ((conn (make-network-process
+                :name (format "websocket server on port %d" port)
+                :server t
+                :family 'ipv4
+                :log 'websocket-server-accept
+                :plist plist
+                :host 'local
+                :service port
+                :local (websocket-get-address port))))))
+
 (defun websocket-create-headers (url key protocol extensions)
   "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
 These are defined as in `websocket-open'."
@@ -494,6 +584,19 @@ if not."
               (match-string 1 output)))
   t)
 
+(defun websocket-parse-repeated-field (output field)
+  "From header-containing OUTPUT, parse out the list from a
+possibly repeated field."
+  (let ((pos 0)
+        (extensions))
+    (while (and pos
+                (string-match (format "\r\n%s: \\(.*\\)\r\n" field)
+                              output pos))
+      (when (setq pos (match-end 1))
+        (setq extensions (append extensions (split-string
+                                             (match-string 1 output) ", ?")))))
+    extensions))
+
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
 The output is assumed to have complete headers.  This function
@@ -519,23 +622,18 @@ of populating the list of server extensions to WEBSOCKET."
                (format "\r\nSec-Websocket-Protocol: %s\r\n"
                        (websocket-protocol websocket)) output)
         (error "Incorrect or missing protocol returned by the server.")))
-    (let ((pos 0)
-          (extensions))
-      (while (and pos
-                  (string-match "\r\nSec-Websocket-Extensions: \\(.*\\)\r\n"
-                      output pos))
-        (when (setq pos (match-end 1))
-          (setq extensions (append extensions (split-string
-                                               (match-string 1 output) ", ?")))))
-      (let ((extra-extensions))
-        (dolist (ext extensions)
-          (when (not (member
-                      (first (split-string ext "; ?"))
-                      (websocket-extensions websocket)))
-            (add-to-list 'extra-extensions (first (split-string ext "; ?")))))
-        (when extra-extensions
-          (error "Non-requested extensions returned by server: %s"
-                 extra-extensions)))
+    (let* ((extensions (websocket-parse-repeated-field
+                        output
+                        "Sec-WebSocket-Extensions"))
+           (extra-extensions))
+      (dolist (ext extensions)
+        (when (not (member
+                    (first (split-string ext "; ?"))
+                    (websocket-extensions websocket)))
+          (add-to-list 'extra-extensions (first (split-string ext "; ?")))))
+      (when extra-extensions
+        (error "Non-requested extensions returned by server: %s"
+               extra-extensions))
       (setf (websocket-server-extensions websocket) extensions)))
   ;; return true
   t)
