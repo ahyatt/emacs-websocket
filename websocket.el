@@ -582,7 +582,7 @@ connection is invalid, the connection will be closed."
             (websocket-verify-headers websocket text))
         (error
          (websocket-close websocket)
-         (error err)))
+         (signal (car err) (cdr err))))
       (setf (websocket-ready-state websocket) 'open)
       (websocket-try-callback 'websocket-on-open 'on-open websocket))
     (when (eq 'open (websocket-ready-state websocket))
