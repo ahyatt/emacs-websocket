@@ -360,7 +360,12 @@
                                        (substring websocket-frames 0 2)))
       (should open-callback-called)
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
-      (should (equal (list frame2 frame1) processed-frames)))))
+      (should (equal (list frame2 frame1) processed-frames)))
+    (flet ((websocket-ready-state (websocket) 'connecting)
+           (websocket-close (websocket)))
+      (should (equal "Bad HTTP response code while opening websocket connection: 500"
+                     (car (cdr (should-error
+                                (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")))))))))
 
 (ert-deftest websocket-outer-filter-bad-connection ()
   (let* ((on-open-calledp)
