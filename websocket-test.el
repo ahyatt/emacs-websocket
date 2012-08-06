@@ -54,9 +54,9 @@
   (let ((f (lambda () (websocket-get-bytes "\x0\x0\x0\x1\x0\x0\x0\x1" 8))))
     (if websocket-test-64-bit-p
         (should (equal #x100000001 (funcall f)))
-      (should-error (funcall f))))
+      (should-error (funcall f) :type 'websocket-unparseable-frame)))
   (should-error (websocket-get-bytes "\x0\x0\x0" 3))
-  (should-error (websocket-get-bytes "\x0" 2)))
+  (should-error (websocket-get-bytes "\x0" 2) :type 'websocket-unparseable-frame))
 
 (ert-deftest websocket-get-opcode ()
   (should (equal 'text (websocket-get-opcode websocket-test-hello))))
@@ -115,8 +115,11 @@
 
 (ert-deftest websocket-verify-response-code ()
   (should (websocket-verify-response-code "HTTP/1.1 101"))
-  (should-error (websocket-verify-response-code "HTTP/1.1 400"))
-  (should-error (websocket-verify-response-code "HTTP/1.1 200")))
+  (should
+   (eq 400 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 400")
+                          :type 'websocket-received-error-http-response))))
+  (should
+   (eq 200 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 200"))))))
 
 (ert-deftest websocket-verify-headers ()
   (let ((accept "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
@@ -142,24 +145,30 @@
     (should-error
      (websocket-verify-headers
       ws
-      (websocket-test-header-with-lines invalid-accept upgrade connection)))
+      (websocket-test-header-with-lines invalid-accept upgrade connection))
+     :type 'websocket-invalid-header)
     (should-error (websocket-verify-headers
                    ws
-                   (websocket-test-header-with-lines upgrade connection)))
+                   (websocket-test-header-with-lines upgrade connection))
+                  :type 'websocket-invalid-header)
     (should-error (websocket-verify-headers
                    ws
-                   (websocket-test-header-with-lines accept connection)))
+                   (websocket-test-header-with-lines accept connection))
+                  :type 'websocket-invalid-header)
     (should-error (websocket-verify-headers
                    ws
-                   (websocket-test-header-with-lines accept upgrade)))
+                   (websocket-test-header-with-lines accept upgrade))
+                  :type 'websocket-invalid-header)
     (should-error (websocket-verify-headers
                    ws-with-protocol
-                   (websocket-test-header-with-lines accept upgrade connection)))
+                   (websocket-test-header-with-lines accept upgrade connection))
+                  :type 'websocket-invalid-header)
     (should-error
      (websocket-verify-headers
       ws-with-protocol
       (websocket-test-header-with-lines accept upgrade connection
-                                        "Sec-Websocket-Protocol: foo")))
+                                        "Sec-Websocket-Protocol: foo"))
+     :type 'websocket-invalid-header)
     (should
      (websocket-verify-headers
       ws-with-protocol
@@ -363,9 +372,9 @@
       (should (equal (list frame2 frame1) processed-frames)))
     (flet ((websocket-ready-state (websocket) 'connecting)
            (websocket-close (websocket)))
-      (should (equal "Bad HTTP response code while opening websocket connection: 500"
-                     (car (cdr (should-error
-                                (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")))))))))
+      (should (eq 500 (cdr (should-error
+                                (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")
+                                :type 'websocket-received-error-http-response)))))))
 
 (ert-deftest websocket-outer-filter-bad-connection ()
   (let* ((on-open-calledp)
@@ -393,11 +402,13 @@
       (websocket-send ws (make-websocket-frame :opcode 'ping
                                                        :completep t)))
     (should-error (websocket-send ws
-                                  (make-websocket-frame :opcode 'text )))
+                                  (make-websocket-frame :opcode 'text)))
     (should-error (websocket-send ws
                                   (make-websocket-frame :opcode 'close
                                                         :payload "bye!"
-                                                        :completep t)))
+                                                        :completep t))
+                  :type 'websocket-illegal-frame)
     (should-error (websocket-send ws
-                                  (make-websocket-frame :opcode :close)))))
+                                  (make-websocket-frame :opcode :close))
+                  :type 'websocket-illegal-frame)))
 
