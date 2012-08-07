@@ -527,7 +527,7 @@ These are defined as in `websocket-open'."
 
 (defun websocket-get-debug-buffer-create (websocket)
   "Get or create the buffer corresponding to WEBSOCKET."
-  (get-buffer-create (format " *websocket %s debug*"
+  (get-buffer-create (format "*websocket %s debug*"
                              (websocket-url websocket))))
 
 (defun websocket-debug (websocket msg &rest args)
