@@ -191,17 +191,25 @@ power of 2, up to 8."
            (cval (calc-eval '("(2^32 * $ + $$)") nil
                             (aref 32-bit-parts 0) (aref 32-bit-parts 1))))
       (when (calc-eval '("$ > $$") 'pred cval most-positive-fixnum)
-        (error "websocket-get-bytes: value too large to parse!"))
+        (signal 'websocket-unparseable-frame
+                "Frame value found too large to parse!"))
       (string-to-number cval))
     ;; n is not 8
-    (bindat-get-field (bindat-unpack
-                     `((:val
-                        ,(cond ((= n 1) 'u8)
-                               ((= n 2) 'u16)
-                               ((= n 4) 'u32)
-                               (t (error
-                                   "websocket-get-bytes: Unknown N: %s" n)))))
-                     s) :val)))
+    (bindat-get-field
+     (condition-case err
+         (bindat-unpack
+          `((:val
+             ,(cond ((= n 1) 'u8)
+                    ((= n 2) 'u16)
+                    ((= n 4) 'u32)
+                    ;; This is an error with the library,
+                    ;; not a user-facing, meaningful error.
+                    (t (error
+                        "websocket-get-bytes: Unknown N: %s" n)))))
+          s)
+       (args-out-of-range (signal 'websocket-unparseable-frame
+                                  (format "Frame unexpectedly shortly: %s" s))))
+     :val)))
 
 (defun websocket-to-bytes (val nbytes)
   "Encode the integer VAL in NBYTES of data.
@@ -210,13 +218,15 @@ NBYTES much be a power of 2, up to 8."
                    (< val (expt 2 (* 8 nbytes))))
               (and (= nbytes 8)
                    (calc-eval "% < 2^(8 * %%)" 'pred val nbytes)))
-      (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
-             val nbytes))
+    ;; not a user-facing error, this must be caused from an error in
+    ;; this library
+    (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
+           val nbytes))
   (if (= nbytes 8)
       (progn
         (when (calc-eval "$ < 4294967296" 'pred most-positive-fixnum)
-          (error "Could not send an 8-byte value on this version of emacs.
-A 64-bit version of emacs may solve your problem."))
+          (signal 'websocket-frame-too-large
+                  most-positive-fixnum))
         ;; Need to use calc even though at this point things are manageable,
         ;; since some emacs cannot parse the value 4294967296, even if
         ;; they never evaluate it.
@@ -227,6 +237,7 @@ A 64-bit version of emacs may solve your problem."))
      `((:val ,(cond ((= nbytes 1) 'u8)
                     ((= nbytes 2) 'u16)
                     ((= nbytes 4) 'u32)
+                    ;; Library error, not system error
                     (t (error "websocket-to-bytes: Unknown NBYTES: %s" nbytes)))))
      `((:val . ,val)))))
 
@@ -342,6 +353,35 @@ the frame finishes.  If the frame is not completed, return NIL."
   "The default error handler used to handle errors in callbacks."
   (message "Error found in callback `%S': %s" type (cdr err)))
 
+;; Error symbols in use by the library
+(put 'websocket-unsupported-protocol 'error-conditions
+     '(error websocket-error websocket-unsupported-protocol))
+(put 'websocket-unsupported-protocol 'error-message "Unsupport websocket protocol")
+(put 'websocket-received-error-http-response 'error-conditions
+     '(error websocket-error websocket-received-error-http-response))
+(put 'websocket-received-error-http-response 'error-message
+     "Error response received from websocket server")
+(put 'websocket-invalid-header 'error-conditions
+     '(error websocket-error websocket-invalid-header))
+(put 'websocket-invalid-header 'error-message
+     "Invalid HTTP header sent")
+(put 'websocket-illegal-frame 'error-conditions
+     '(error websocket-error websocket-illegal-frame))
+(put 'websocket-illegal-frame 'error-message
+     "Cannot send illegal frame to websocket")
+(put 'websocket-closed 'error-conditions
+     '(error websocket-error websocket-closed))
+(put 'websocket-closed 'error-message
+     "Cannot send message to a closed websocket")
+(put 'websocket-unparseable-frame 'error-conditions
+     '(error websocket-error websocket-unparseable-frame))
+(put 'websocket-unparseable-frame 'error-message
+     "Received an unparseable frame")
+(put 'websocket-frame-too-large 'error-conditions
+     '(error websocket-error websocket-frame-too-large))
+(put 'websocket-frame-too-large 'error-message
+     "The frame being sent is too large for this emacs to handle")
+
 (defun* websocket-open (url &key protocols extensions (on-open 'identity)
                             (on-message (lambda (w f))) (on-close 'identity)
                             (on-error 'websocket-default-error-handler))
@@ -387,7 +427,24 @@ dangerous is the debugger is quit out of.  If not specified,
 
 For each of these event handlers, the client code can store
 arbitrary data in the `client-data' slot in the returned
-websocket."
+websocket.
+
+The following errors might be thrown in this method or in
+websocket processing, all of them having the error-condition
+`websocket-error' in addition to their own symbol:
+
+`websocket-unsupported-protocol': Data in the error signal is the
+protocol (such as \"wss\") that is unsupported.
+
+`websocket-received-error-http-response': Data in the error
+signal is the integer error number.
+
+`websocket-invalid-header': Data in the error is a string
+describing the invalid header received from the server.
+
+`websocket-unparseable-frame': Data in the error is a string
+describing the problem with the frame.
+"
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
@@ -407,8 +464,9 @@ websocket."
                                                  :service port :nowait nil)
                          (condition-case-no-debug nil
                              (open-network-stream name buf host port :type type :nowait nil)
-                           (wrong-number-of-arguments (error "No wss support in this Emacs version.")))))
-                 (error "Unknown protocol")))
+                           (wrong-number-of-arguments
+                            (signal 'websocket-unsupported-protocol "wss")))))
+                 (signal 'websocket-unsupported-protocol (url-type url-struct))))
          (websocket (websocket-inner-create
                      :conn conn
                      :url url
@@ -610,8 +668,11 @@ These are defined as in `websocket-open'."
 
 (defun websocket-get-debug-buffer-create (websocket)
   "Get or create the buffer corresponding to WEBSOCKET."
-  (get-buffer-create (format " *websocket %s debug*"
-                             (websocket-url websocket))))
+  (let ((buf (get-buffer-create (format "*websocket %s debug*"
+                                    (websocket-url websocket)))))
+    (when (= 0 (buffer-size buf))
+      (buffer-disable-undo buf))
+    buf))
 
 (defun websocket-debug (websocket msg &rest args)
   "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
@@ -631,8 +692,8 @@ A t value will be returned on success, and an error thrown
 if not."
   (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
   (unless (equal "101" (match-string 1 output))
-       (error "Bad HTTP response code while opening websocket connection: %s"
-              (match-string 1 output)))
+       (signal 'websocket-received-error-http-response
+               (string-to-int (match-string 1 output))))
   t)
 
 (defun websocket-parse-repeated-field (output field)
@@ -657,14 +718,17 @@ of populating the list of server extensions to WEBSOCKET."
          (concat "Sec-WebSocket-Accept: " (websocket-accept-string websocket))))
     (websocket-debug websocket "Checking for accept header: %s" accept-string)
     (unless (string-match (regexp-quote accept-string) output)
-      (error "Incorrect handshake from websocket: is this really a websocket connection?")))
+      (signal 'websocket-invalid-header
+              "Incorrect handshake from websocket: is this really a websocket connection?")))
   (let ((case-fold-search t))
     (websocket-debug websocket "Checking for upgrade header")
     (unless (string-match "\r\nUpgrade: websocket\r\n" output)
-      (error "No 'Upgrade: websocket' header found."))
+      (signal 'websocket-invalid-header
+              "No 'Upgrade: websocket' header found"))
     (websocket-debug websocket "Checking for connection header")
     (unless (string-match "\r\nConnection: upgrade\r\n" output)
-      (error "No 'Connection: upgrade' header found"))
+      (signal 'websocket-invalid-header
+              "No 'Connection: upgrade' header found"))
     (when (websocket-protocols websocket)
       (dolist (protocol (websocket-protocols websocket))
         (websocket-debug websocket "Checking for protocol match: %s"
@@ -674,8 +738,8 @@ of populating the list of server extensions to WEBSOCKET."
                (format "\r\nSec-Websocket-Protocol: %s\r\n"
                        protocol) output)
               (add-to-list 'protocols protocol)
-            (error "Incorrect or missing protocol (%s) returned by the server."
-                   protocol))
+            (signal 'websocket-invalid-header
+                    "Incorrect or missing protocol returned by the server."))
           (setf (websocket-negotiated-protocols websocket) protocols))))
     (let* ((extensions (websocket-parse-repeated-field
                         output
@@ -687,10 +751,10 @@ of populating the list of server extensions to WEBSOCKET."
                     (websocket-extensions websocket)))
           (add-to-list 'extra-extensions (first (split-string ext "; ?")))))
       (when extra-extensions
-        (error "Non-requested extensions returned by server: %s"
-               extra-extensions))
+        (signal 'websocket-invalid-header
+                (format "Non-requested extensions returned by server: %S"
+                        extra-extensions)))
       (setf (websocket-negotiated-extensions websocket) extensions)))
-  ;; return true
   t)
 
 (defun websocket-process-frame (websocket frame)
@@ -735,7 +799,7 @@ connection is invalid, the connection will be closed."
             (websocket-verify-headers websocket text))
         (error
          (websocket-close websocket)
-         (error err)))
+         (signal (car err) (cdr err))))
       (setf (websocket-ready-state websocket) 'open)
       (websocket-try-callback 'websocket-on-open 'on-open websocket))
     (when (eq 'open (websocket-ready-state websocket))
@@ -764,15 +828,29 @@ connection is invalid, the connection will be closed."
 
 (defun websocket-send (websocket frame)
   "To the WEBSOCKET server, send the FRAME.
-This will raise an error if the frame is illegal."
+This will raise an error if the frame is illegal.
+
+The error signaled may be of type `websocket-illegal-frame' if
+the frame is malformed in some way, also having the condition
+type of `websocket-error'.  The data associated with the signal
+is the frame being sent.
+
+If the websocket is closed a signal `websocket-closed' is sent,
+also with `websocket-error' condition.  The data in the signal is
+also the frame.
+
+The frame may be too large for this buid of emacs, in which case
+`websocket-frame-too-large' is returned, with the data of the
+system's `most-positive-fixnum', whose length was exceeded.  This
+also has the `websocket-error' condition."
   (unless (websocket-check frame)
-    (error "Cannot send illegal frame to websocket"))
+    (signal 'websocket-illegal-frame frame))
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
                    (websocket-frame-opcode frame)
                    (websocket-frame-payload frame))
   (websocket-ensure-connected websocket)
   (unless (websocket-openp websocket)
-    (error "No webserver process to send data to!"))
+    (signal 'websocket-closed frame))
   (process-send-string (websocket-conn websocket)
                        (websocket-encode-frame frame)))
 
