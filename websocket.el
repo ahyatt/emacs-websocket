@@ -66,8 +66,9 @@ called.
 `on-open', `on-message', `on-close', and `on-error' are described
 in `websocket-open'.
 
-The `server-extensions' slot lists the extensions accepted by the
-server.
+The `negotiated-extensions' slot lists the extensions accepted by
+both the client and server, and `negotiated-protocols' does the
+same for the protocols.
 "
   ;; API
   (ready-state 'connecting)
@@ -76,12 +77,13 @@ server.
   on-message
   on-close
   on-error
-  server-extensions
+  negotiated-protocols
+  negotiated-extensions
   (server-p nil :read-only t)
 
   ;; Other data - clients should not have to access this.
   (url (assert nil) :read-only t)
-  (protocol nil :read-only t)
+  (protocols nil :read-only t)
   (extensions nil :read-only t)
   (conn (assert nil) :read-only t)
   accept-string
@@ -340,13 +342,14 @@ the frame finishes.  If the frame is not completed, return NIL."
   "The default error handler used to handle errors in callbacks."
   (message "Error found in callback `%S': %s" type (cdr err)))
 
-(defun* websocket-open (url &key protocol extensions (on-open 'identity)
+(defun* websocket-open (url &key protocols extensions (on-open 'identity)
                             (on-message (lambda (w f))) (on-close 'identity)
                             (on-error 'websocket-default-error-handler))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
-the server that this client supports the protocol.  We will
-require that the server also has to support that protocol.
+the server that this client supports the protocols in the list
+given.  We will require that the server also has to support that
+protocols.
 
 Similar logic applies to EXTENSIONS, which is a list of conses,
 the car of which is a string naming the extension, and the cdr of
@@ -413,7 +416,7 @@ websocket."
                      :on-message on-message
                      :on-close on-close
                      :on-error on-error
-                     :protocol protocol
+                     :protocols protocols
                      :extensions (mapcar 'car extensions)
                      :accept-string
                      (websocket-calculate-accept key))))
@@ -487,7 +490,8 @@ messages and a plist containing `:key', the websocket key,
         (message "Websocket client connection: Upgrade: websocket not found")
         (return nil))
       (if (string-match "^Sec-WebSocket-Key: \\([[:graph:]]+\\)\r\n" output)
-          (setq plist (plist-put plist :key (match-string 1 output)))
+          (setq plist (plist-put plist :key (base64-decode-string
+                                             (match-string 1 output))))
         (message "Websocket client connect: No key sent")
         (return nil))
       (unless (string-match "^Sec-WebSocket-Version: 13" output)
@@ -508,16 +512,58 @@ messages and a plist containing `:key', the websocket key,
     (cond ((eq (websocket-ready-state ws) 'connecting)
            ;; check for connection string
            (when (string-match "\r\n\r\n" output)
-             (if (websocket-verify-client-headers ws output)
-                 (progn (setf (websocket-ready-state ws) 'open)
-                        (websocket-server-filter process output))
-               (message "Invalid client headers found in: %s" output)
-               (websocket-close ws))))
+             (let ((header-info (websocket-verify-client-headers ws output)))
+               (if header-info
+                   (progn (setf (websocket-ready-state ws) 'open)
+                          (websocket-server-filter process output)
+                          (setf (websocket-accept-string ws)
+                                (websocket-calculate-accept
+                                 (plist-get header-info :key)))
+                          (process-send-string (websocket-get-server-response
+                                                ws (plist-get header-info :protocols)
+                                                (plist-get header-info :extensions))))
+                   (message "Invalid client headers found in: %s" output)
+                 (websocket-close ws)))))
           ((eq (websocket-ready-state ws) 'open)
            ;; process ouput
            )
           ((eq (websocket-ready-state ws) 'closed)
            (message "WARNING: Should not have received further input on closed websocket")))))
+
+(defun websocket-intersect (a b)
+  "Simple list intersection, should function like common lisp's `intersection'."
+  (let ((result))
+    (dolist (elem a (nreverse result))
+      (when (member elem b)
+        (add-to-list 'result elem)))))
+
+(defun websocket-get-server-response (websocket client-protocols client-extensions)
+  "Get the websocket response from client WEBSOCKET."
+  (let ((separator "\r\n"))
+      (concat "HTTP/1.1 101 Switching Protocols" separator
+              "Upgrade: websocket" separator
+              "Connection: Upgrade" separator
+              "Sec-WebSocket-Accept: "
+              (websocket-accept-string websocket) separator
+              (let ((protocols
+                         (websocket-intersect client-protocols
+                                              (websocket-protocols websocket))))
+                    (when protocols
+                      (concat
+                       (mapconcat
+                        (lambda (protocol) (format "Sec-WebSocket-Protocol: %s"
+                                              protocol)) protocols separator)
+                       separator)))
+              (let ((extensions (websocket-intersect
+                                   client-extensions
+                                   (websocket-extensions websocket))))
+                  (when extensions
+                    (concat
+                     (mapconcat
+                      (lambda (extension) (format "Sec-Websocket-Extensions: %s"
+                                             extension)) extensions separator)
+                     separator)))
+              separator)))
 
 (defun* websocket-server (port &rest plist)
   "Open a websocket server on PORT."
@@ -541,7 +587,11 @@ These are defined as in `websocket-open'."
                   "Origin: %s\r\n"
                   "Sec-WebSocket-Version: 13\r\n"
                   (when protocol
-                    "Sec-WebSocket-Protocol: %s\r\n")
+                    (concat
+                     (mapconcat (lambda (protocol)
+                                  (format "Sec-WebSocket-Protocol: %s" protocol))
+                                protocol "\r\n")
+                     "\r\n"))
                   (when extensions
                     (format "Sec-WebSocket-Extensions: %s\r\n"
                             (mapconcat
@@ -614,14 +664,18 @@ of populating the list of server extensions to WEBSOCKET."
     (websocket-debug websocket "Checking for connection header")
     (unless (string-match "\r\nConnection: upgrade\r\n" output)
       (error "No 'Connection: upgrade' header found"))
-    ;; TODO(ahyatt) Implement checking for extensions
-    (when (websocket-protocol websocket)
-      (websocket-debug websocket "Checking for protocol match: %s"
-                       (websocket-protocol websocket))
-      (unless (string-match
+    (when (websocket-protocols websocket)
+      (dolist (protocol (websocket-protocols websocket))
+        (websocket-debug websocket "Checking for protocol match: %s"
+                         protocol)
+        (let ((protocols))
+          (if (string-match
                (format "\r\nSec-Websocket-Protocol: %s\r\n"
-                       (websocket-protocol websocket)) output)
-        (error "Incorrect or missing protocol returned by the server.")))
+                       protocol) output)
+              (add-to-list 'protocols protocol)
+            (error "Incorrect or missing protocol (%s) returned by the server."
+                   protocol))
+          (setf (websocket-negotiated-protocols websocket) protocols))))
     (let* ((extensions (websocket-parse-repeated-field
                         output
                         "Sec-WebSocket-Extensions"))
@@ -634,7 +688,7 @@ of populating the list of server extensions to WEBSOCKET."
       (when extra-extensions
         (error "Non-requested extensions returned by server: %s"
                extra-extensions))
-      (setf (websocket-server-extensions websocket) extensions)))
+      (setf (websocket-negotiated-extensions websocket) extensions)))
   ;; return true
   t)
 
@@ -748,7 +802,7 @@ connecting or open."
                  ((stop exit signal closed connect failed nil) nil)))
     (websocket-close websocket)
     (websocket-open (websocket-url websocket)
-                    :protocol (websocket-protocol websocket)
+                    :protocols (websocket-protocols websocket)
                     :extensions (websocket-extensions websocket)
                     :on-open (websocket-on-open websocket)
                     :on-message (websocket-on-message websocket)

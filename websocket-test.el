@@ -130,7 +130,7 @@
          (websocket-inner-create
              :conn "fake-conn" :url "ws://foo/bar"
              :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-             :protocol "myprotocol"))
+             :protocols '("myprotocol")))
         (ws-with-extensions
          (websocket-inner-create
              :conn "fake-conn" :url "ws://foo/bar"
@@ -165,6 +165,8 @@
       ws-with-protocol
       (websocket-test-header-with-lines accept upgrade connection
                                         "Sec-Websocket-Protocol: myprotocol")))
+    (should (equal '("myprotocol")
+                   (websocket-negotiated-protocols ws-with-protocol)))
     (should-error
      (websocket-verify-headers
       ws-with-extensions
@@ -176,7 +178,7 @@
       (websocket-test-header-with-lines
        accept upgrade connection "Sec-Websocket-Extensions: ext1, ext2; a=1")))
     (should (equal '("ext1" "ext2; a=1")
-                   (websocket-server-extensions ws-with-extensions)))
+                   (websocket-negotiated-extensions ws-with-extensions)))
     (should
      (websocket-verify-headers
       ws-with-extensions
@@ -184,7 +186,7 @@
                                         "Sec-Websocket-Extensions: ext1"
                                         "Sec-Websocket-Extensions: ext2; a=1")))
     (should (equal '("ext1" "ext2; a=1")
-                   (websocket-server-extensions ws-with-extensions)))))
+                   (websocket-negotiated-extensions ws-with-extensions)))))
 
 (ert-deftest websocket-create-headers ()
   (let ((system-name "mysystem")
@@ -200,7 +202,7 @@
     (should (equal (concat base-headers
                            "Sec-WebSocket-Protocol: protocol\r\n\r\n")
                    (websocket-create-headers "ws://www.example.com/path"
-                                             "key" "protocol" nil)))
+                                             "key" '("protocol") nil)))
     (should (equal
              (concat base-headers
                      "Sec-WebSocket-Extensions: ext1; a; b=2, ext2\r\n\r\n")
@@ -400,7 +402,7 @@
   (let* ((http "HTTP/1.1")
          (host "Host: authority")
          (upgrade "Upgrade: websocket")
-         (key "Sec-Websocket-Key: key")
+         (key (format "Sec-Websocket-Key: %s" (base64-encode-string "key")))
          (version "Sec-Websocket-Version: 13")
          (origin "Origin: origin")
          (protocol "Sec-Websocket-Protocol: protocol")
@@ -426,4 +428,49 @@
     (should-not (websocket-verify-client-headers
                  (mapconcat 'identity (append (list "HTTP/1.0" "") all-required-headers)
                             "\r\n")))))
+
+(ert-deftest websocket-intersect ()
+  (should (equal '(2) (websocket-intersect '(1 2) '(2 3))))
+  (should (equal nil (websocket-intersect '(1 2) '(3 4))))
+  (should (equal '(1 2) (websocket-intersect '(1 2) '(1 2)))))
+
+(ert-deftest websocket-get-server-response ()
+  (let ((ws (websocket-inner-create :conn t :url t :accept-string "key"
+                                    :protocols '("spa" "spb")
+                                    :extensions '("sea" "seb"))))
+    (should (equal (concat
+                    "HTTP/1.1 101 Switching Protocols\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Accept: key\r\n\r\n")
+                   (websocket-get-server-response ws nil nil)))
+    (should (string-match "Sec-Websocket-Protocol: spb\r\n"
+                          (websocket-get-server-response ws '("spb" "spc") nil)))
+    (should-not (string-match "Sec-Websocket-Protocol:"
+                              (websocket-get-server-response ws '("spc") nil)))
+    (let ((output (websocket-get-server-response ws '("spa" "spb") nil)))
+      (should (string-match "Sec-Websocket-Protocol: spa\r\n" output))
+      (should (string-match "Sec-Websocket-Protocol: spb\r\n" output)))
+    (should (string-match "Sec-Websocket-Extensions: sea"
+                          (websocket-get-server-response ws nil '("sea" "sec"))))
+    (should-not (string-match "Sec-Websocket-Extensions:"
+                              (websocket-get-server-response ws nil '("sec"))))
+    (let ((output (websocket-get-server-response ws nil '("sea" "seb"))))
+      (should (string-match "Sec-Websocket-Extensions: sea\r\n" output))
+      (should (string-match "Sec-Websocket-Extensions: seb\r\n" output)))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
