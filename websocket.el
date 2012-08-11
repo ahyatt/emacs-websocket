@@ -519,9 +519,10 @@ messages and a plist containing `:key', the websocket key,
                           (setf (websocket-accept-string ws)
                                 (websocket-calculate-accept
                                  (plist-get header-info :key)))
-                          (process-send-string (websocket-get-server-response
-                                                ws (plist-get header-info :protocols)
-                                                (plist-get header-info :extensions))))
+                          (process-send-string
+                           (websocket-get-server-response
+                            ws (plist-get header-info :protocols)
+                            (plist-get header-info :extensions))))
                    (message "Invalid client headers found in: %s" output)
                  (websocket-close ws)))))
           ((eq (websocket-ready-state ws) 'open)
