@@ -1,4 +1,4 @@
-;;; websocket-test.el --- Unit tests for the websocket layer
+;; websocket-test.el --- Unit tests for the websocket layer
 
 ;; Copyright (c) 2010 Andrew Hyatt
 ;;
@@ -475,18 +475,37 @@
       (should (string-match "Sec-Websocket-Extensions: sea\r\n" output))
       (should (string-match "Sec-Websocket-Extensions: seb\r\n" output)))))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+(ert-deftest websocket-server-filter ()
+  (let ((on-open-called)
+        (ws (websocket-inner-create :conn t :url t :accept-string "key"
+                                    :on-open (lambda (ws) (setq on-open-called t))))
+        (closed)
+        (response)
+        (processed))
+    (flet ((process-send-string (p text) (setq response text))
+           (websocket-close (ws) (setq closed t))
+           (process-get (process sym) ws))
+     ;; Bad request, in two parts
+     (flet ((websocket-verify-client-headers (ws text) nil))
+       (websocket-server-filter nil "HTTP/1.0 GET /foo \r\n")
+       (should-not closed)
+       (websocket-server-filter nil "\r\n")
+       (should (equal response "HTTP/1.1 400 Bad Request\r\n\r\n"))
+       (should-not (websocket-inflight-input ws)))
+    ;; Good request, followed by packet
+     (setq closed nil
+           response nil)
+     (setf (websocket-inflight-input ws) nil)
+     (flet ((websocket-verify-client-headers (ws text) t)
+            (websocket-get-server-response (ws protocols extensions)
+                                           "response")
+            (websocket-process-input-on-open-ws (ws text)
+                                                (setq processed t)
+                                                (should
+                                                 (equal text websocket-test-hello))))
+       (websocket-server-filter nil
+                                (concat "\r\n\r\n" websocket-test-hello))
+       (should (equal (websocket-ready-state ws) 'open))
+       (should-not closed)
+       (should (equal response "response"))
+       (should processed)))))

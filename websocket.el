@@ -566,26 +566,40 @@ messages and a plist containing `:key', the websocket key,
       plist)))
 
 (defun websocket-server-filter (process output)
-  (let ((ws (process-get process :websocket)))
+  "This acts on all OUTPUT from websocket clients PROCESS."
+  (let* ((ws (process-get process :websocket))
+         (text (concat (websocket-inflight-input ws) output)))
+    (setf (websocket-inflight-input ws) nil)
     (cond ((eq (websocket-ready-state ws) 'connecting)
            ;; check for connection string
-           (when (string-match "\r\n\r\n" output)
-             (let ((header-info (websocket-verify-client-headers ws output)))
-               (if header-info
-                   (progn (setf (websocket-ready-state ws) 'open)
-                          (websocket-server-filter process output)
-                          (setf (websocket-accept-string ws)
-                                (websocket-calculate-accept
-                                 (plist-get header-info :key)))
-                          (process-send-string
-                           (websocket-get-server-response
-                            ws (plist-get header-info :protocols)
-                            (plist-get header-info :extensions))))
-                   (message "Invalid client headers found in: %s" output)
-                 (websocket-close ws)))))
+           (let ((end-of-header-pos
+                  (let ((pos (string-match "\r\n\r\n" text)))
+                    (when pos (+ 4 pos)))))
+               (if end-of-header-pos
+                   (progn
+                     (let ((header-info (websocket-verify-client-headers ws text)))
+                       (if header-info
+                           (progn (setf (websocket-accept-string ws)
+                                        (websocket-calculate-accept
+                                         (plist-get header-info :key)))
+                                  (process-send-string
+                                   process
+                                   (websocket-get-server-response
+                                    ws (plist-get header-info :protocols)
+                                    (plist-get header-info :extensions)))
+                                  (setf (websocket-ready-state ws) 'open)
+                                  (websocket-try-callback 'websocket-on-open
+                                                          'on-open ws))
+                         (message "Invalid client headers found in: %s" output)
+                         (process-send-string process "HTTP/1.1 400 Bad Request\r\n\r\n")
+                         (websocket-close ws)))
+                     (when (> (length text) (+ 1 end-of-header-pos))
+                       (websocket-server-filter process (substring
+                                                           text
+                                                           end-of-header-pos))))
+                 (setf (websocket-inflight-input ws) text))))
           ((eq (websocket-ready-state ws) 'open)
-           ;; process ouput
-           )
+           (websocket-process-input-on-open-ws ws text))
           ((eq (websocket-ready-state ws) 'closed)
            (message "WARNING: Should not have received further input on closed websocket")))))
 
@@ -786,8 +800,7 @@ connection is invalid, the connection will be closed."
   (let ((start-point)
         (end-point 0)
         (text (concat (websocket-inflight-input websocket) output))
-        (header-end-pos)
-        (processing-queue))
+        (header-end-pos))
     ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
     (when (and (eq 'connecting (websocket-ready-state websocket))
@@ -803,16 +816,23 @@ connection is invalid, the connection will be closed."
       (setf (websocket-ready-state websocket) 'open)
       (websocket-try-callback 'websocket-on-open 'on-open websocket))
     (when (eq 'open (websocket-ready-state websocket))
-      (unless start-point (setq start-point 0))
-      (let ((current-frame))
-        (while (and (setq current-frame (websocket-read-frame
-                                         (substring text start-point))))
-          (push (websocket-process-frame websocket current-frame) processing-queue)
-          (incf start-point (websocket-frame-length current-frame)))))
-    (setf (websocket-inflight-input websocket)
-        (substring text (or start-point 0)))
+      (websocket-process-input-on-open-ws
+       websocket (substring text (or start-point 0))))))
+
+(defun websocket-process-input-on-open-ws (websocket text)
+  "This handles input processing for both the client and server filters."
+  (let ((current-frame)
+        (processing-queue)
+        (start-point 0))
+    (while (setq current-frame (websocket-read-frame
+                                (substring text start-point)))
+      (push (websocket-process-frame websocket current-frame) processing-queue)
+      (incf start-point (websocket-frame-length current-frame)))
+    (when (> (length text) start-point)
+      (setf (websocket-inflight-input websocket)
+            (substring text start-point)))
     (dolist (to-process (nreverse processing-queue))
-      (funcall to-process))))
+      (funcall to-process)))))
 
 (defun websocket-send-text (websocket text)
   "To the WEBSOCKET, send TEXT as a complete frame."
