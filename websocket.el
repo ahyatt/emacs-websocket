@@ -528,7 +528,10 @@ describing the problem with the frame.
              :protocols (process-get server :protocol)
              :extensions (mapcar 'car (process-get server :extensions)))))
     (process-put client :websocket ws)
-    (set-process-filter client 'websocket-server-filter)))
+    (set-process-filter client 'websocket-server-filter)
+    ;; set-process-filter-multibyte is obsolete, but make-network-process's
+    ;; :filter-multibyte arg does not seem to do anything.
+    (set-process-filter-multibyte client nil)))
 
 (defun websocket-verify-client-headers (output)
   "Verify the headers from the WEBSOCKET client connection in OUTPUT.
