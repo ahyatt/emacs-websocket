@@ -41,6 +41,7 @@
 (eval-when-compile (require 'cl))
 
 ;;; Code:
+
 (defstruct (websocket
             (:constructor nil)
             (:constructor websocket-inner-create))
@@ -382,6 +383,169 @@ the frame finishes.  If the frame is not completed, return NIL."
 (put 'websocket-frame-too-large 'error-message
      "The frame being sent is too large for this emacs to handle")
 
+(defun websocket-intersect (a b)
+  "Simple list intersection, should function like common lisp's `intersection'."
+  (let ((result))
+    (dolist (elem a (nreverse result))
+      (when (member elem b)
+        (add-to-list 'result elem)))))
+
+(defun websocket-get-debug-buffer-create (websocket)
+  "Get or create the buffer corresponding to WEBSOCKET."
+  (let ((buf (get-buffer-create (format "*websocket %s debug*"
+                                    (websocket-url websocket)))))
+    (when (= 0 (buffer-size buf))
+      (buffer-disable-undo buf))
+    buf))
+
+(defun websocket-debug (websocket msg &rest args)
+  "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
+  (when websocket-debug
+    (let ((buf (websocket-get-debug-buffer-create websocket)))
+      (save-excursion
+        (with-current-buffer buf
+          (goto-char (point-max))
+          (insert "[WS] ")
+          (insert (apply 'format (append (list msg) args)))
+          (insert "\n"))))))
+
+(defun websocket-verify-response-code (output)
+  "Verify that OUTPUT contains a valid HTTP response code.
+The only acceptable one to websocket is responce code 101.
+A t value will be returned on success, and an error thrown
+if not."
+  (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
+  (unless (equal "101" (match-string 1 output))
+       (signal 'websocket-received-error-http-response
+               (string-to-int (match-string 1 output))))
+  t)
+
+(defun websocket-parse-repeated-field (output field)
+  "From header-containing OUTPUT, parse out the list from a
+possibly repeated field."
+  (let ((pos 0)
+        (extensions))
+    (while (and pos
+                (string-match (format "\r\n%s: \\(.*\\)\r\n" field)
+                              output pos))
+      (when (setq pos (match-end 1))
+        (setq extensions (append extensions (split-string
+                                             (match-string 1 output) ", ?")))))
+    extensions))
+
+(defun websocket-process-frame (websocket frame)
+  "Using the WEBSOCKET's filter and connection, process the FRAME.
+This returns a lambda that should be executed when all frames have
+been processed.  If the frame has a payload, the lambda has the frame
+passed to the filter slot of WEBSOCKET.  If the frame is a ping,
+the lambda has a reply with a pong.  If the frame is a close, the lambda
+has connection termination."
+  (let ((opcode (websocket-frame-opcode frame)))
+    (lexical-let ((lex-ws websocket)
+                  (lex-frame frame))
+      (cond ((memq opcode '(continuation text binary))
+             (lambda () (websocket-try-callback 'websocket-on-message 'on-message
+                                           lex-ws lex-frame)))
+            ((eq opcode 'ping)
+             (lambda () (websocket-send lex-ws
+                                   (make-websocket-frame :opcode 'pong :completep t))))
+            ((eq opcode 'close)
+             (lambda () (delete-process (websocket-conn lex-ws))))
+            (t (lambda ()))))))
+
+(defun websocket-process-input-on-open-ws (websocket text)
+  "This handles input processing for both the client and server filters."
+  (let ((current-frame)
+        (processing-queue)
+        (start-point 0))
+    (while (setq current-frame (websocket-read-frame
+                                (substring text start-point)))
+      (push (websocket-process-frame websocket current-frame) processing-queue)
+      (incf start-point (websocket-frame-length current-frame)))
+    (when (> (length text) start-point)
+      (setf (websocket-inflight-input websocket)
+            (substring text start-point)))
+    (dolist (to-process (nreverse processing-queue))
+      (funcall to-process))))
+
+(defun websocket-send-text (websocket text)
+  "To the WEBSOCKET, send TEXT as a complete frame."
+  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
+                                                  :completep t)))
+
+(defun websocket-check (frame)
+  "Check FRAME for correctness, returning true if correct."
+  (and (equal (not (memq (websocket-frame-opcode frame)
+                         '(continuation text binary)))
+              (and (not (websocket-frame-payload frame))
+                   (websocket-frame-completep frame)))))
+
+(defun websocket-send (websocket frame)
+  "To the WEBSOCKET server, send the FRAME.
+This will raise an error if the frame is illegal.
+
+The error signaled may be of type `websocket-illegal-frame' if
+the frame is malformed in some way, also having the condition
+type of `websocket-error'.  The data associated with the signal
+is the frame being sent.
+
+If the websocket is closed a signal `websocket-closed' is sent,
+also with `websocket-error' condition.  The data in the signal is
+also the frame.
+
+The frame may be too large for this buid of emacs, in which case
+`websocket-frame-too-large' is returned, with the data of the
+system's `most-positive-fixnum', whose length was exceeded.  This
+also has the `websocket-error' condition."
+  (unless (websocket-check frame)
+    (signal 'websocket-illegal-frame frame))
+  (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
+                   (websocket-frame-opcode frame)
+                   (websocket-frame-payload frame))
+  (websocket-ensure-connected websocket)
+  (unless (websocket-openp websocket)
+    (signal 'websocket-closed frame))
+  (process-send-string (websocket-conn websocket)
+                       (websocket-encode-frame frame)))
+
+(defun websocket-openp (websocket)
+  "Check WEBSOCKET and return non-nil if it is open, and either
+connecting or open."
+  (and websocket
+       (not (eq 'close (websocket-ready-state websocket)))
+       (member (process-status (websocket-conn websocket)) '(open run))))
+
+(defun websocket-close (websocket)
+  "Close WEBSOCKET and erase all the old websocket data."
+  (websocket-debug websocket "Closing websocket")
+  (when (websocket-openp websocket)
+    (websocket-send websocket
+                    (make-websocket-frame :opcode 'close
+                                          :completep t))
+    (setf (websocket-ready-state websocket) 'closed))
+  ;; Do we want to kill this?  It may result in on-closed not being
+  ;; called.
+  (kill-buffer (process-buffer (websocket-conn websocket))))
+
+(defun websocket-ensure-connected (websocket)
+  "If the WEBSOCKET connection is closed, open it."
+  (unless (and (websocket-conn websocket)
+               (ecase (process-status (websocket-conn websocket))
+                 ((run open listen) t)
+                 ((stop exit signal closed connect failed nil) nil)))
+    (websocket-close websocket)
+    (websocket-open (websocket-url websocket)
+                    :protocols (websocket-protocols websocket)
+                    :extensions (websocket-extensions websocket)
+                    :on-open (websocket-on-open websocket)
+                    :on-message (websocket-on-message websocket)
+                    :on-close (websocket-on-close websocket)
+                    :on-error (websocket-on-error websocket))))
+
+;;;;;;;;;;;;;;;;;;;;;;
+;; Websocket client ;;
+;;;;;;;;;;;;;;;;;;;;;;
+
 (defun* websocket-open (url &key protocols extensions (on-open 'identity)
                             (on-message (lambda (w f))) (on-close 'identity)
                             (on-error 'websocket-default-error-handler))
@@ -503,230 +667,33 @@ describing the problem with the frame.
     (websocket-debug websocket "Websocket opened")
     websocket))
 
-(defun websocket-get-address (port)
-  "Get a non-loopback address to serve from."
-  (let ((net-addr
-         (block 'get-address
-           (dolist (interface (network-interface-list))
-             (when (not (member
-                         'loopback
-                         (nth 4 (network-interface-info (car interface)))))
-               (return-from 'get-address (cdr interface))))
-           (error "No non-loopback interface found"))))
-    (aset net-addr 4 port)
-    net-addr))
-
-(defun websocket-server-accept (server client message)
-  "Accept a new websocket connection from a client."
-  (message "Connected from %S: %s" client message)
-  (let ((ws (websocket-inner-create
-             :conn client
-             :url client
-             :on-open (or (process-get server :on-open) 'identity)
-             :on-message (or (process-get server :on-message) (lambda (ws frame)))
-             :on-error (or (process-get server :on-error) 'identity)
-             :protocols (process-get server :protocol)
-             :extensions (mapcar 'car (process-get server :extensions)))))
-    (process-put client :websocket ws)
-    (set-process-filter client 'websocket-server-filter)
-    ;; set-process-filter-multibyte is obsolete, but make-network-process's
-    ;; :filter-multibyte arg does not seem to do anything.
-    (set-process-filter-multibyte client nil)))
-
-(defun websocket-verify-client-headers (output)
-  "Verify the headers from the WEBSOCKET client connection in OUTPUT.
-Unlike `websocket-verify-headers', this is a quieter routine.  We
-don't want to error due to a bad client, so we just print out
-messages and a plist containing `:key', the websocket key,
-`:protocols' and `:extensions'."
-  (block nil
-    (let ((case-fold-search t)
-          (plist))
-      (unless (string-match "HTTP/1.1" output)
-        (message "Websocket client connection: HTTP/1.1 not found")
-        (return nil))
-      (unless (string-match "^Host: " output)
-        (message "Websocket client connection: Host header not found")
-        (return nil))
-      (unless (string-match "^Upgrade: websocket\r\n" output)
-        (message "Websocket client connection: Upgrade: websocket not found")
-        (return nil))
-      (if (string-match "^Sec-WebSocket-Key: \\([[:graph:]]+\\)\r\n" output)
-          (setq plist (plist-put plist :key (match-string 1 output)))
-        (message "Websocket client connect: No key sent")
-        (return nil))
-      (unless (string-match "^Sec-WebSocket-Version: 13" output)
-        (message "Websocket client connect: Websocket version 13 not found")
-        (return nil))
-      (when (string-match "^Sec-WebSocket-Protocol:" output)
-        (setq plist (plist-put plist :protocols (websocket-parse-repeated-field
-                                                 output
-                                                 "Sec-Websocket-Protocol"))))
-      (when (string-match "^Sec-WebSocket-Extensions:" output)
-        (setq plist (plist-put plist :extensions (websocket-parse-repeated-field
-                                                  output
-                                                  "Sec-Websocket-Extensions"))))
-      plist)))
-
-(defun websocket-server-filter (process output)
-  "This acts on all OUTPUT from websocket clients PROCESS."
-  (let* ((ws (process-get process :websocket))
-         (text (concat (websocket-inflight-input ws) output)))
-    (setf (websocket-inflight-input ws) nil)
-    (cond ((eq (websocket-ready-state ws) 'connecting)
-           ;; check for connection string
-           (let ((end-of-header-pos
-                  (let ((pos (string-match "\r\n\r\n" text)))
-                    (when pos (+ 4 pos)))))
-               (if end-of-header-pos
-                   (progn
-                     (let ((header-info (websocket-verify-client-headers text)))
-                       (if header-info
-                           (progn (setf (websocket-accept-string ws)
-                                        (websocket-calculate-accept
-                                         (plist-get header-info :key)))
-                                  (process-send-string
-                                   process
-                                   (websocket-get-server-response
-                                    ws (plist-get header-info :protocols)
-                                    (plist-get header-info :extensions)))
-                                  (setf (websocket-ready-state ws) 'open)
-                                  (websocket-try-callback 'websocket-on-open
-                                                          'on-open ws))
-                         (message "Invalid client headers found in: %s" output)
-                         (process-send-string process "HTTP/1.1 400 Bad Request\r\n\r\n")
-                         (websocket-close ws)))
-                     (when (> (length text) (+ 1 end-of-header-pos))
-                       (websocket-server-filter process (substring
-                                                           text
-                                                           end-of-header-pos))))
-                 (setf (websocket-inflight-input ws) text))))
-          ((eq (websocket-ready-state ws) 'open)
-           (websocket-process-input-on-open-ws ws text))
-          ((eq (websocket-ready-state ws) 'closed)
-           (message "WARNING: Should not have received further input on closed websocket")))))
-
-(defun websocket-intersect (a b)
-  "Simple list intersection, should function like common lisp's `intersection'."
-  (let ((result))
-    (dolist (elem a (nreverse result))
-      (when (member elem b)
-        (add-to-list 'result elem)))))
-
-(defun websocket-get-server-response (websocket client-protocols client-extensions)
-  "Get the websocket response from client WEBSOCKET."
-  (let ((separator "\r\n"))
-      (concat "HTTP/1.1 101 Switching Protocols" separator
-              "Upgrade: websocket" separator
-              "Connection: Upgrade" separator
-              "Sec-WebSocket-Accept: "
-              (websocket-accept-string websocket) separator
-              (let ((protocols
-                         (websocket-intersect client-protocols
-                                              (websocket-protocols websocket))))
-                    (when protocols
-                      (concat
-                       (mapconcat
-                        (lambda (protocol) (format "Sec-WebSocket-Protocol: %s"
-                                              protocol)) protocols separator)
-                       separator)))
-              (let ((extensions (websocket-intersect
-                                   client-extensions
-                                   (websocket-extensions websocket))))
-                  (when extensions
-                    (concat
-                     (mapconcat
-                      (lambda (extension) (format "Sec-Websocket-Extensions: %s"
-                                             extension)) extensions separator)
-                     separator)))
-              separator)))
-
-(defun* websocket-server (port &rest plist)
-  "Open a websocket server on PORT.
-PORT can be `t' to get a random port."
-  (let* ((conn (make-network-process
-                :name (format "websocket server on port %d" port)
-                :server t
-                :family 'ipv4
-                :log 'websocket-server-accept
-                :filter-multibyte nil
-                :plist plist
-                :host 'local
-                :service port
-                :local (websocket-get-address port))))))
-
-(defun websocket-create-headers (url key protocol extensions)
-  "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
-These are defined as in `websocket-open'."
-  (format (concat "Host: %s\r\n"
-                  "Upgrade: websocket\r\n"
-                  "Connection: Upgrade\r\n"
-                  "Sec-WebSocket-Key: %s\r\n"
-                  "Origin: %s\r\n"
-                  "Sec-WebSocket-Version: 13\r\n"
-                  (when protocol
-                    (concat
-                     (mapconcat (lambda (protocol)
-                                  (format "Sec-WebSocket-Protocol: %s" protocol))
-                                protocol "\r\n")
-                     "\r\n"))
-                  (when extensions
-                    (format "Sec-WebSocket-Extensions: %s\r\n"
-                            (mapconcat
-                             (lambda (ext)
-                               (concat (car ext)
-                                       (when (cdr ext) "; ")
-                                       (when (cdr ext)
-                                         (mapconcat 'identity (cdr ext) "; "))))
-                             extensions ", ")))
-                  "\r\n")
-          (url-host (url-generic-parse-url url))
-          key
-          system-name
-          protocol))
-
-(defun websocket-get-debug-buffer-create (websocket)
-  "Get or create the buffer corresponding to WEBSOCKET."
-  (let ((buf (get-buffer-create (format "*websocket %s debug*"
-                                    (websocket-url websocket)))))
-    (when (= 0 (buffer-size buf))
-      (buffer-disable-undo buf))
-    buf))
-
-(defun websocket-debug (websocket msg &rest args)
-  "In the WEBSOCKET's debug buffer, send MSG, with format ARGS."
-  (when websocket-debug
-    (let ((buf (websocket-get-debug-buffer-create websocket)))
-      (save-excursion
-        (with-current-buffer buf
-          (goto-char (point-max))
-          (insert "[WS] ")
-          (insert (apply 'format (append (list msg) args)))
-          (insert "\n"))))))
-
-(defun websocket-verify-response-code (output)
-  "Verify that OUTPUT contains a valid HTTP response code.
-The only acceptable one to websocket is responce code 101.
-A t value will be returned on success, and an error thrown
-if not."
-  (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
-  (unless (equal "101" (match-string 1 output))
-       (signal 'websocket-received-error-http-response
-               (string-to-int (match-string 1 output))))
-  t)
-
-(defun websocket-parse-repeated-field (output field)
-  "From header-containing OUTPUT, parse out the list from a
-possibly repeated field."
-  (let ((pos 0)
-        (extensions))
-    (while (and pos
-                (string-match (format "\r\n%s: \\(.*\\)\r\n" field)
-                              output pos))
-      (when (setq pos (match-end 1))
-        (setq extensions (append extensions (split-string
-                                             (match-string 1 output) ", ?")))))
-    extensions))
+(defun websocket-outer-filter (websocket output)
+  "Filter the WEBSOCKET server's OUTPUT.
+This will parse headers and process frames repeatedly until there
+is no more output or the connection closes.  If the websocket
+connection is invalid, the connection will be closed."
+  (websocket-debug websocket "Received: %s" output)
+  (let ((start-point)
+        (end-point 0)
+        (text (concat (websocket-inflight-input websocket) output))
+        (header-end-pos))
+    ;; If we've received the complete header, check to see if we've
+    ;; received the desired handshake.
+    (when (and (eq 'connecting (websocket-ready-state websocket))
+               (setq header-end-pos (string-match "\r\n\r\n" text))
+               (setq start-point (+ 4 header-end-pos)))
+      (condition-case err
+          (progn
+            (websocket-verify-response-code text)
+            (websocket-verify-headers websocket text))
+        (error
+         (websocket-close websocket)
+         (signal (car err) (cdr err))))
+      (setf (websocket-ready-state websocket) 'open)
+      (websocket-try-callback 'websocket-on-open 'on-open websocket))
+    (when (eq 'open (websocket-ready-state websocket))
+      (websocket-process-input-on-open-ws
+       websocket (substring text (or start-point 0))))))
 
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
@@ -776,142 +743,184 @@ of populating the list of server extensions to WEBSOCKET."
       (setf (websocket-negotiated-extensions websocket) extensions)))
   t)
 
-(defun websocket-process-frame (websocket frame)
-  "Using the WEBSOCKET's filter and connection, process the FRAME.
-This returns a lambda that should be executed when all frames have
-been processed.  If the frame has a payload, the lambda has the frame
-passed to the filter slot of WEBSOCKET.  If the frame is a ping,
-the lambda has a reply with a pong.  If the frame is a close, the lambda
-has connection termination."
-  (let ((opcode (websocket-frame-opcode frame)))
-    (lexical-let ((lex-ws websocket)
-                  (lex-frame frame))
-      (cond ((memq opcode '(continuation text binary))
-             (lambda () (websocket-try-callback 'websocket-on-message 'on-message
-                                           lex-ws lex-frame)))
-            ((eq opcode 'ping)
-             (lambda () (websocket-send lex-ws
-                                   (make-websocket-frame :opcode 'pong :completep t))))
-            ((eq opcode 'close)
-             (lambda () (delete-process (websocket-conn lex-ws))))
-            (t (lambda ()))))))
+;;;;;;;;;;;;;;;;;;;;;;
+;; Websocket server ;;
+;;;;;;;;;;;;;;;;;;;;;;
 
-(defun websocket-outer-filter (websocket output)
-  "Filter the WEBSOCKET server's OUTPUT.
-This will parse headers and process frames repeatedly until there
-is no more output or the connection closes.  If the websocket
-connection is invalid, the connection will be closed."
-  (websocket-debug websocket "Received: %s" output)
-  (let ((start-point)
-        (end-point 0)
-        (text (concat (websocket-inflight-input websocket) output))
-        (header-end-pos))
-    ;; If we've received the complete header, check to see if we've
-    ;; received the desired handshake.
-    (when (and (eq 'connecting (websocket-ready-state websocket))
-               (setq header-end-pos (string-match "\r\n\r\n" text))
-               (setq start-point (+ 4 header-end-pos)))
-      (condition-case err
-          (progn
-            (websocket-verify-response-code text)
-            (websocket-verify-headers websocket text))
-        (error
-         (websocket-close websocket)
-         (signal (car err) (cdr err))))
-      (setf (websocket-ready-state websocket) 'open)
-      (websocket-try-callback 'websocket-on-open 'on-open websocket))
-    (when (eq 'open (websocket-ready-state websocket))
-      (websocket-process-input-on-open-ws
-       websocket (substring text (or start-point 0))))))
+(defun* websocket-server (port &rest plist)
+  "Open a websocket server on PORT.
+PORT can be `t' to get a random port."
+  (let* ((conn (make-network-process
+                :name (format "websocket server on port %d" port)
+                :server t
+                :family 'ipv4
+                :log 'websocket-server-accept
+                :filter-multibyte nil
+                :plist plist
+                :host 'local
+                :service port
+                :local (websocket-get-address port))))))
 
-(defun websocket-process-input-on-open-ws (websocket text)
-  "This handles input processing for both the client and server filters."
-  (let ((current-frame)
-        (processing-queue)
-        (start-point 0))
-    (while (setq current-frame (websocket-read-frame
-                                (substring text start-point)))
-      (push (websocket-process-frame websocket current-frame) processing-queue)
-      (incf start-point (websocket-frame-length current-frame)))
-    (when (> (length text) start-point)
-      (setf (websocket-inflight-input websocket)
-            (substring text start-point)))
-    (dolist (to-process (nreverse processing-queue))
-      (funcall to-process))))
+(defun websocket-get-address (port)
+  "Get a non-loopback address to serve from."
+  (let ((net-addr
+         (block 'get-address
+           (dolist (interface (network-interface-list))
+             (when (not (member
+                         'loopback
+                         (nth 4 (network-interface-info (car interface)))))
+               (return-from 'get-address (cdr interface))))
+           (error "No non-loopback interface found"))))
+    (aset net-addr 4 port)
+    net-addr))
 
-(defun websocket-send-text (websocket text)
-  "To the WEBSOCKET, send TEXT as a complete frame."
-  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
-                                                  :completep t)))
+(defun websocket-server-accept (server client message)
+  "Accept a new websocket connection from a client."
+  (message "Connected from %S: %s" client message)
+  (let ((ws (websocket-inner-create
+             :conn client
+             :url client
+             :on-open (or (process-get server :on-open) 'identity)
+             :on-message (or (process-get server :on-message) (lambda (ws frame)))
+             :on-error (or (process-get server :on-error) 'identity)
+             :protocols (process-get server :protocol)
+             :extensions (mapcar 'car (process-get server :extensions)))))
+    (process-put client :websocket ws)
+    (set-process-filter client 'websocket-server-filter)
+    ;; set-process-filter-multibyte is obsolete, but make-network-process's
+    ;; :filter-multibyte arg does not seem to do anything.
+    (set-process-filter-multibyte client nil)))
 
-(defun websocket-check (frame)
-  "Check FRAME for correctness, returning true if correct."
-  (and (equal (not (memq (websocket-frame-opcode frame)
-                         '(continuation text binary)))
-              (and (not (websocket-frame-payload frame))
-                   (websocket-frame-completep frame)))))
+(defun websocket-create-headers (url key protocol extensions)
+  "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
+These are defined as in `websocket-open'."
+  (format (concat "Host: %s\r\n"
+                  "Upgrade: websocket\r\n"
+                  "Connection: Upgrade\r\n"
+                  "Sec-WebSocket-Key: %s\r\n"
+                  "Origin: %s\r\n"
+                  "Sec-WebSocket-Version: 13\r\n"
+                  (when protocol
+                    (concat
+                     (mapconcat (lambda (protocol)
+                                  (format "Sec-WebSocket-Protocol: %s" protocol))
+                                protocol "\r\n")
+                     "\r\n"))
+                  (when extensions
+                    (format "Sec-WebSocket-Extensions: %s\r\n"
+                            (mapconcat
+                             (lambda (ext)
+                               (concat (car ext)
+                                       (when (cdr ext) "; ")
+                                       (when (cdr ext)
+                                         (mapconcat 'identity (cdr ext) "; "))))
+                             extensions ", ")))
+                  "\r\n")
+          (url-host (url-generic-parse-url url))
+          key
+          system-name
+          protocol))
 
-(defun websocket-send (websocket frame)
-  "To the WEBSOCKET server, send the FRAME.
-This will raise an error if the frame is illegal.
+(defun websocket-get-server-response (websocket client-protocols client-extensions)
+  "Get the websocket response from client WEBSOCKET."
+  (let ((separator "\r\n"))
+      (concat "HTTP/1.1 101 Switching Protocols" separator
+              "Upgrade: websocket" separator
+              "Connection: Upgrade" separator
+              "Sec-WebSocket-Accept: "
+              (websocket-accept-string websocket) separator
+              (let ((protocols
+                         (websocket-intersect client-protocols
+                                              (websocket-protocols websocket))))
+                    (when protocols
+                      (concat
+                       (mapconcat
+                        (lambda (protocol) (format "Sec-WebSocket-Protocol: %s"
+                                              protocol)) protocols separator)
+                       separator)))
+              (let ((extensions (websocket-intersect
+                                   client-extensions
+                                   (websocket-extensions websocket))))
+                  (when extensions
+                    (concat
+                     (mapconcat
+                      (lambda (extension) (format "Sec-Websocket-Extensions: %s"
+                                             extension)) extensions separator)
+                     separator)))
+              separator)))
 
-The error signaled may be of type `websocket-illegal-frame' if
-the frame is malformed in some way, also having the condition
-type of `websocket-error'.  The data associated with the signal
-is the frame being sent.
+(defun websocket-server-filter (process output)
+  "This acts on all OUTPUT from websocket clients PROCESS."
+  (let* ((ws (process-get process :websocket))
+         (text (concat (websocket-inflight-input ws) output)))
+    (setf (websocket-inflight-input ws) nil)
+    (cond ((eq (websocket-ready-state ws) 'connecting)
+           ;; check for connection string
+           (let ((end-of-header-pos
+                  (let ((pos (string-match "\r\n\r\n" text)))
+                    (when pos (+ 4 pos)))))
+               (if end-of-header-pos
+                   (progn
+                     (let ((header-info (websocket-verify-client-headers text)))
+                       (if header-info
+                           (progn (setf (websocket-accept-string ws)
+                                        (websocket-calculate-accept
+                                         (plist-get header-info :key)))
+                                  (process-send-string
+                                   process
+                                   (websocket-get-server-response
+                                    ws (plist-get header-info :protocols)
+                                    (plist-get header-info :extensions)))
+                                  (setf (websocket-ready-state ws) 'open)
+                                  (websocket-try-callback 'websocket-on-open
+                                                          'on-open ws))
+                         (message "Invalid client headers found in: %s" output)
+                         (process-send-string process "HTTP/1.1 400 Bad Request\r\n\r\n")
+                         (websocket-close ws)))
+                     (when (> (length text) (+ 1 end-of-header-pos))
+                       (websocket-server-filter process (substring
+                                                           text
+                                                           end-of-header-pos))))
+                 (setf (websocket-inflight-input ws) text))))
+          ((eq (websocket-ready-state ws) 'open)
+           (websocket-process-input-on-open-ws ws text))
+          ((eq (websocket-ready-state ws) 'closed)
+           (message "WARNING: Should not have received further input on closed websocket")))))
 
-If the websocket is closed a signal `websocket-closed' is sent,
-also with `websocket-error' condition.  The data in the signal is
-also the frame.
-
-The frame may be too large for this buid of emacs, in which case
-`websocket-frame-too-large' is returned, with the data of the
-system's `most-positive-fixnum', whose length was exceeded.  This
-also has the `websocket-error' condition."
-  (unless (websocket-check frame)
-    (signal 'websocket-illegal-frame frame))
-  (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
-                   (websocket-frame-opcode frame)
-                   (websocket-frame-payload frame))
-  (websocket-ensure-connected websocket)
-  (unless (websocket-openp websocket)
-    (signal 'websocket-closed frame))
-  (process-send-string (websocket-conn websocket)
-                       (websocket-encode-frame frame)))
-
-(defun websocket-openp (websocket)
-  "Check WEBSOCKET and return non-nil if it is open, and either
-connecting or open."
-  (and websocket
-       (not (eq 'close (websocket-ready-state websocket)))
-       (member (process-status (websocket-conn websocket)) '(open run))))
-
-(defun websocket-close (websocket)
-  "Close WEBSOCKET and erase all the old websocket data."
-  (websocket-debug websocket "Closing websocket")
-  (when (websocket-openp websocket)
-    (websocket-send websocket
-                    (make-websocket-frame :opcode 'close
-                                          :completep t))
-    (setf (websocket-ready-state websocket) 'closed))
-  ;; Do we want to kill this?  It may result in on-closed not being
-  ;; called.
-  (kill-buffer (process-buffer (websocket-conn websocket))))
-
-(defun websocket-ensure-connected (websocket)
-  "If the WEBSOCKET connection is closed, open it."
-  (unless (and (websocket-conn websocket)
-               (ecase (process-status (websocket-conn websocket))
-                 ((run open listen) t)
-                 ((stop exit signal closed connect failed nil) nil)))
-    (websocket-close websocket)
-    (websocket-open (websocket-url websocket)
-                    :protocols (websocket-protocols websocket)
-                    :extensions (websocket-extensions websocket)
-                    :on-open (websocket-on-open websocket)
-                    :on-message (websocket-on-message websocket)
-                    :on-close (websocket-on-close websocket)
-                    :on-error (websocket-on-error websocket))))
+(defun websocket-verify-client-headers (output)
+  "Verify the headers from the WEBSOCKET client connection in OUTPUT.
+Unlike `websocket-verify-headers', this is a quieter routine.  We
+don't want to error due to a bad client, so we just print out
+messages and a plist containing `:key', the websocket key,
+`:protocols' and `:extensions'."
+  (block nil
+    (let ((case-fold-search t)
+          (plist))
+      (unless (string-match "HTTP/1.1" output)
+        (message "Websocket client connection: HTTP/1.1 not found")
+        (return nil))
+      (unless (string-match "^Host: " output)
+        (message "Websocket client connection: Host header not found")
+        (return nil))
+      (unless (string-match "^Upgrade: websocket\r\n" output)
+        (message "Websocket client connection: Upgrade: websocket not found")
+        (return nil))
+      (if (string-match "^Sec-WebSocket-Key: \\([[:graph:]]+\\)\r\n" output)
+          (setq plist (plist-put plist :key (match-string 1 output)))
+        (message "Websocket client connect: No key sent")
+        (return nil))
+      (unless (string-match "^Sec-WebSocket-Version: 13" output)
+        (message "Websocket client connect: Websocket version 13 not found")
+        (return nil))
+      (when (string-match "^Sec-WebSocket-Protocol:" output)
+        (setq plist (plist-put plist :protocols (websocket-parse-repeated-field
+                                                 output
+                                                 "Sec-Websocket-Protocol"))))
+      (when (string-match "^Sec-WebSocket-Extensions:" output)
+        (setq plist (plist-put plist :extensions (websocket-parse-repeated-field
+                                                  output
+                                                  "Sec-Websocket-Extensions"))))
+      plist)))
 
 (provide 'websocket)
 
