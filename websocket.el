@@ -521,11 +521,12 @@ describing the problem with the frame.
   (message "Connected from %S: %s" client message)
   (let ((ws (websocket-inner-create
              :conn client
-             :on-open (or (process-get proc :on-open) 'identity)
-             :on-message (or (process-get proc :on-message) (lambda (ws frame)))
-             :on-error (or (process-get proc :on-error) 'identity)
-             :protocol (process-get proc :protocol)
-             :extensions (mapcar 'car (process-get proc :extensions)))))
+             :url client
+             :on-open (or (process-get server :on-open) 'identity)
+             :on-message (or (process-get server :on-message) (lambda (ws frame)))
+             :on-error (or (process-get server :on-error) 'identity)
+             :protocols (process-get server :protocol)
+             :extensions (mapcar 'car (process-get server :extensions)))))
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)))
 
@@ -538,7 +539,7 @@ messages and a plist containing `:key', the websocket key,
   (block nil
     (let ((case-fold-search t)
           (plist))
-      (unless (string-match "^HTTP/1.1" output)
+      (unless (string-match "HTTP/1.1" output)
         (message "Websocket client connection: HTTP/1.1 not found")
         (return nil))
       (unless (string-match "^Host: " output)
@@ -548,18 +549,17 @@ messages and a plist containing `:key', the websocket key,
         (message "Websocket client connection: Upgrade: websocket not found")
         (return nil))
       (if (string-match "^Sec-WebSocket-Key: \\([[:graph:]]+\\)\r\n" output)
-          (setq plist (plist-put plist :key (base64-decode-string
-                                             (match-string 1 output))))
+          (setq plist (plist-put plist :key (match-string 1 output)))
         (message "Websocket client connect: No key sent")
         (return nil))
       (unless (string-match "^Sec-WebSocket-Version: 13" output)
         (message "Websocket client connect: Websocket version 13 not found")
         (return nil))
-      (when (string-match "^Sec-WebSocket-Protocol: \\([[:graph:]]+\\)\r\n" output)
+      (when (string-match "^Sec-WebSocket-Protocol:" output)
         (setq plist (plist-put plist :protocols (websocket-parse-repeated-field
                                                  output
                                                  "Sec-Websocket-Protocol"))))
-      (when (string-match "^Sec-WebSocket-Extensions: \\([[:graph:]]+\\)\r\n" output)
+      (when (string-match "^Sec-WebSocket-Extensions:" output)
         (setq plist (plist-put plist :extensions (websocket-parse-repeated-field
                                                   output
                                                   "Sec-Websocket-Extensions"))))
@@ -577,7 +577,7 @@ messages and a plist containing `:key', the websocket key,
                     (when pos (+ 4 pos)))))
                (if end-of-header-pos
                    (progn
-                     (let ((header-info (websocket-verify-client-headers ws text)))
+                     (let ((header-info (websocket-verify-client-headers text)))
                        (if header-info
                            (progn (setf (websocket-accept-string ws)
                                         (websocket-calculate-accept
@@ -639,12 +639,14 @@ messages and a plist containing `:key', the websocket key,
               separator)))
 
 (defun* websocket-server (port &rest plist)
-  "Open a websocket server on PORT."
+  "Open a websocket server on PORT.
+PORT can be `t' to get a random port."
   (let* ((conn (make-network-process
                 :name (format "websocket server on port %d" port)
                 :server t
                 :family 'ipv4
                 :log 'websocket-server-accept
+                :filter-multibyte nil
                 :plist plist
                 :host 'local
                 :service port
@@ -832,7 +834,7 @@ connection is invalid, the connection will be closed."
       (setf (websocket-inflight-input websocket)
             (substring text start-point)))
     (dolist (to-process (nreverse processing-queue))
-      (funcall to-process)))))
+      (funcall to-process))))
 
 (defun websocket-send-text (websocket text)
   "To the WEBSOCKET, send TEXT as a complete frame."

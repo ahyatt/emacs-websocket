@@ -202,7 +202,8 @@
         (base-headers (concat "Host: www.example.com\r\n"
                               "Upgrade: websocket\r\n"
                               "Connection: Upgrade\r\n"
-                              "Sec-WebSocket-Key: key\r\n"
+                              (format "Sec-WebSocket-Key: %s\r\n"
+                                      (websocket-calculate-accept "key"))
                               "Origin: mysystem\r\n"
                               "Sec-WebSocket-Version: 13\r\n")))
     (should (equal (concat base-headers "\r\n")
@@ -509,3 +510,33 @@
        (should-not closed)
        (should (equal response "response"))
        (should processed)))))
+
+(ert-deftest websocket-complete-server-response-test ()
+  ;; Example taken from RFC
+  (should (equal
+           (concat "HTTP/1.1 101 Switching Protocols\r\n"
+                   "Upgrade: websocket\r\n"
+                   "Connection: Upgrade\r\n"
+                   "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+                   "Sec-WebSocket-Protocol: chat\r\n\r\n"
+                   )
+           (let ((header-info
+                          (websocket-verify-client-headers
+                           (concat "GET /chat HTTP/1.1\r\n"
+                                   "Host: server.example.com\r\n"
+                                   "Upgrade: websocket\r\n"
+                                   "Connection: Upgrade\r\n"
+                                   "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                   "Origin: http://example.com\r\n"
+                                   "Sec-WebSocket-Protocol: chat, superchat\r\n"
+                                   "Sec-WebSocket-Version: 13\r\n"))))
+                     (should header-info)
+                     (let ((ws (websocket-inner-create
+                                :conn t :url t
+                                :accept-string (websocket-calculate-accept
+                                                (plist-get header-info :key))
+                                :protocols '("chat"))))
+                       (websocket-get-server-response
+                        ws
+                        (plist-get header-info :protocols)
+                        (plist-get header-info :extension)))))))
