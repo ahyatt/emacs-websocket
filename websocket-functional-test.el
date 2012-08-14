@@ -60,7 +60,7 @@
 (stop-process wstest-server-proc)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Remove server test, with wss ;;
+;; Remote server test, with wss ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (when (>= (string-to-int (substring emacs-version 0 2)) 24)
@@ -83,8 +83,31 @@
   (websocket-send-text wstest-ws "Hi!")
   (sleep-for 0.1)
   (assert (equal (car wstest-msgs) "Hi!"))
-  (websocket-close wstest-ws)
-  
-  (message "\nAll tests passed!\n"))
+  (websocket-close wstest-ws))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Local client and server ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(message "Testing with emacs websocket server.")
+(message "If this does not pass, make sure your firewall allows the connection.")
+
+(setq server-conn (websocket-server
+                   9998
+                   :on-message (lambda (ws frame)
+                                 (message "Server received text!")
+                                 (websocket-send-text
+                                  (websocket-frame-payload frame)))
+                   :on-open (lambda (websocket) "Client connection opened!")))
+(setq wstest-msgs nil
+      wstest-ws
+      (websocket-open
+       "ws://localhost:9998"
+       :on-message (lambda (websocket frame)
+                     (push (websocket-frame-payload frame) wstest-msgs)
+                     (message "ws frame: %S" (websocket-frame-payload frame)))))
+(assert (websocket-openp wstest-ws))
+(websocket-send-text wstest-ws "Hi to self!")
+(assert (equal (car wstest-msgs) "Hi to self!"))
+(websocket-server-close server-conn)
+(message "\nAll tests passed!\n")

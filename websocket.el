@@ -663,7 +663,7 @@ describing the problem with the frame.
     (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
                      key (websocket-accept-string websocket))
     (process-send-string conn
-                         (websocket-create-headers url key protocol extensions))
+                         (websocket-create-headers url key protocols extensions))
     (websocket-debug websocket "Websocket opened")
     websocket))
 
@@ -749,7 +749,8 @@ of populating the list of server extensions to WEBSOCKET."
 
 (defun* websocket-server (port &rest plist)
   "Open a websocket server on PORT.
-PORT can be `t' to get a random port."
+PORT can be `t' to get a random port.
+TODO(ahyatt): Find out how to return the port number."
   (let* ((conn (make-network-process
                 :name (format "websocket server on port %d" port)
                 :server t
@@ -757,22 +758,14 @@ PORT can be `t' to get a random port."
                 :log 'websocket-server-accept
                 :filter-multibyte nil
                 :plist plist
-                :host 'local
-                :service port
-                :local (websocket-get-address port))))))
+                :service port)))
+    conn))
 
-(defun websocket-get-address (port)
-  "Get a non-loopback address to serve from."
-  (let ((net-addr
-         (block 'get-address
-           (dolist (interface (network-interface-list))
-             (when (not (member
-                         'loopback
-                         (nth 4 (network-interface-info (car interface)))))
-               (return-from 'get-address (cdr interface))))
-           (error "No non-loopback interface found"))))
-    (aset net-addr 4 port)
-    net-addr))
+(defun websocket-server-close (conn)
+  "Closes the websocket, as well as all open websockets."
+  ;; TODO(ahyatt) Delete all open websockets (we have to start keeping
+  ;; track first)
+  (delete-process conn))
 
 (defun websocket-server-accept (server client message)
   "Accept a new websocket connection from a client."
@@ -782,7 +775,8 @@ PORT can be `t' to get a random port."
              :url client
              :on-open (or (process-get server :on-open) 'identity)
              :on-message (or (process-get server :on-message) (lambda (ws frame)))
-             :on-error (or (process-get server :on-error) 'identity)
+             :on-error (or (process-get server :on-error)
+                           'websocket-default-error-handler)
              :protocols (process-get server :protocol)
              :extensions (mapcar 'car (process-get server :extensions)))))
     (process-put client :websocket ws)
