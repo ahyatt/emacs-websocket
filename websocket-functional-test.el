@@ -81,7 +81,7 @@
   (assert (websocket-openp wstest-ws))
   (assert (null wstest-msgs))
   (websocket-send-text wstest-ws "Hi!")
-  (sleep-for 0.1)
+  (sleep-for 0.3)
   (assert (equal (car wstest-msgs) "Hi!"))
   (websocket-close wstest-ws))
 
@@ -96,9 +96,10 @@
                    9998
                    :on-message (lambda (ws frame)
                                  (message "Server received text!")
-                                 (websocket-send-text
+                                 (websocket-send-text ws
                                   (websocket-frame-payload frame)))
                    :on-open (lambda (websocket) "Client connection opened!")))
+
 (setq wstest-msgs nil
       wstest-ws
       (websocket-open
@@ -106,8 +107,10 @@
        :on-message (lambda (websocket frame)
                      (push (websocket-frame-payload frame) wstest-msgs)
                      (message "ws frame: %S" (websocket-frame-payload frame)))))
+
 (assert (websocket-openp wstest-ws))
 (websocket-send-text wstest-ws "Hi to self!")
+(sleep-for 0.3)
 (assert (equal (car wstest-msgs) "Hi to self!"))
 (websocket-server-close server-conn)
 (message "\nAll tests passed!\n")
