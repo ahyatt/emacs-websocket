@@ -202,8 +202,7 @@
         (base-headers (concat "Host: www.example.com\r\n"
                               "Upgrade: websocket\r\n"
                               "Connection: Upgrade\r\n"
-                              (format "Sec-WebSocket-Key: %s\r\n"
-                                      (websocket-calculate-accept "key"))
+                              "Sec-WebSocket-Key: key\r\n"
                               "Origin: mysystem\r\n"
                               "Sec-WebSocket-Version: 13\r\n")))
     (should (equal (concat base-headers "\r\n")
@@ -419,7 +418,7 @@
   (let* ((http "HTTP/1.1")
          (host "Host: authority")
          (upgrade "Upgrade: websocket")
-         (key (format "Sec-Websocket-Key: %s" (base64-encode-string "key")))
+         (key (format "Sec-Websocket-Key: %s" "key"))
          (version "Sec-Websocket-Version: 13")
          (origin "Origin: origin")
          (protocol "Sec-Websocket-Protocol: protocol")
@@ -487,7 +486,7 @@
            (websocket-close (ws) (setq closed t))
            (process-get (process sym) ws))
      ;; Bad request, in two parts
-     (flet ((websocket-verify-client-headers (ws text) nil))
+     (flet ((websocket-verify-client-headers (text) nil))
        (websocket-server-filter nil "HTTP/1.0 GET /foo \r\n")
        (should-not closed)
        (websocket-server-filter nil "\r\n")
@@ -497,7 +496,7 @@
      (setq closed nil
            response nil)
      (setf (websocket-inflight-input ws) nil)
-     (flet ((websocket-verify-client-headers (ws text) t)
+     (flet ((websocket-verify-client-headers (text) t)
             (websocket-get-server-response (ws protocols extensions)
                                            "response")
             (websocket-process-input-on-open-ws (ws text)
