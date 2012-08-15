@@ -4,7 +4,7 @@
 ;;
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
-;; Keywords: Communication
+;; Keywords: Communication, Websocket, Server
 ;; Version: 0.92.1
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -26,14 +26,24 @@
 ;; This implements RFC 6455, which can be found at
 ;; http://tools.ietf.org/html/rfc6455.
 ;;
-;; Websockets are created by calling `websocket-open', which returns a
-;; `websocket' struct.  Users of this library use the websocket
-;; struct, and can call methods `websocket-send-text', which sends
-;; text over the websocket, or `websocket-send', which sends a
+;; This library contains code to connect emacs as a client to a
+;; websocket server, and for emacs to act as a server for websocket
+;; connections.
+;;
+;; Websockets clients are created by calling `websocket-open', which
+;; returns a `websocket' struct.  Users of this library use the
+;; websocket struct, and can call methods `websocket-send-text', which
+;; sends text over the websocket, or `websocket-send', which sends a
 ;; `websocket-frame' struct, enabling finer control of what is sent.
 ;; A callback is passed to `websocket-open' that will retrieve
 ;; websocket frames called from the websocket.  Websockets are
 ;; eventually closed with `websocket-close'.
+;;
+;; Server functionality is similar.  A server is started with
+;; `websocket-server' called with a port and the callbacks to use,
+;; which returns a process.  The process can later be closed with
+;; `websocket-server-close'.  A `websocket' struct is also created
+;; for every connection, and is exposed through the callbacks.
 
 (require 'bindat)
 (require 'url-parse)
@@ -417,7 +427,7 @@ if not."
   (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
   (unless (equal "101" (match-string 1 output))
        (signal 'websocket-received-error-http-response
-               (string-to-int (match-string 1 output))))
+               (string-to-number (match-string 1 output))))
   t)
 
 (defun websocket-parse-repeated-field (output field)
@@ -749,8 +759,11 @@ of populating the list of server extensions to WEBSOCKET."
 
 (defun* websocket-server (port &rest plist)
   "Open a websocket server on PORT.
-PORT can be `t' to get a random port.
-TODO(ahyatt): Find out how to return the port number."
+This also takes a plist of callbacks: `:on-open', `:on-message',
+`:on-close' and `:on-error', which operate exactly as documented
+in the websocket client function `websocket-open'.  Returns the
+connection, which should be kept in order to pass to
+`websocket-server-close'."
   (let* ((conn (make-network-process
                 :name (format "websocket server on port %d" port)
                 :server t

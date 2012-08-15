@@ -1,7 +1,9 @@
 * Description
 This is a elisp library for websocket clients to talk to websocket
-servers. This library is designed to be used by other library writers,
-to write apps that use websockets, and is not useful by itself.
+servers, and for websocket servers to accept connections from
+websocket clients. This library is designed to be used by other
+library writers, to write apps that use websockets, and is not useful
+by itself.
 
 An example of how to use the library is in the
 [[https://github.com/ahyatt/emacs-websocket/blob/master/websocket-functional-test.el][websocket-functional-test.el]] file.
@@ -27,7 +29,9 @@ Each version that is released should be checked with this checklist:
 
 - [ ] All ert test passing
 - [ ] Functional test passing on emacs 23 and 24
-- [ ] websocket.el byte compiling cleanly
+- [ ] websocket.el byte compiling cleanly, except for these exceptions:
+  - =set-process-filter-multibyte= is obsolete, yet I cannot find any
+    other way of ensuring my filter has multibyte disabled.
 
 * Existing clients:
 
