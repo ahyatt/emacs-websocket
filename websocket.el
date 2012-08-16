@@ -97,6 +97,8 @@ same for the protocols.
   (protocols nil :read-only t)
   (extensions nil :read-only t)
   (conn (assert nil) :read-only t)
+  ;; Only populated for servers, this is the server connection.
+  server-conn
   accept-string
   (inflight-input nil))
 
@@ -533,9 +535,9 @@ connecting or open."
                     (make-websocket-frame :opcode 'close
                                           :completep t))
     (setf (websocket-ready-state websocket) 'closed))
-  ;; Do we want to kill this?  It may result in on-closed not being
-  ;; called.
-  (kill-buffer (process-buffer (websocket-conn websocket))))
+  (let ((buf (process-buffer (websocket-conn websocket))))
+    (delete-process (websocket-conn websocket))
+    (kill-buffer buf)))
 
 (defun websocket-ensure-connected (websocket)
   "If the WEBSOCKET connection is closed, open it."
@@ -757,6 +759,9 @@ of populating the list of server extensions to WEBSOCKET."
 ;; Websocket server ;;
 ;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar websocket-server-websockets nil
+  "A list of current websockets live on any server.")
+
 (defun* websocket-server (port &rest plist)
   "Open a websocket server on PORT.
 This also takes a plist of callbacks: `:on-open', `:on-message',
@@ -775,28 +780,47 @@ connection, which should be kept in order to pass to
     conn))
 
 (defun websocket-server-close (conn)
-  "Closes the websocket, as well as all open websockets."
-  ;; TODO(ahyatt) Delete all open websockets (we have to start keeping
-  ;; track first)
+  "Closes the websocket, as well as all open websockets for this server."
+  (let ((to-delete))
+    (dolist (ws websocket-server-websockets)
+      (when (eq (websocket-server-conn ws) conn)
+        (if (eq (websocket-ready-state ws) 'closed)
+            (add-to-list 'to-delete ws)
+          (websocket-close ws))))
+    (dolist (ws to-delete)
+      (setq websocket-server-websockets (remove ws websocket-server-websockets))))
   (delete-process conn))
 
 (defun websocket-server-accept (server client message)
   "Accept a new websocket connection from a client."
-  (message "Connected from %S: %s" client message)
   (let ((ws (websocket-inner-create
+             :server-conn server
              :conn client
              :url client
              :on-open (or (process-get server :on-open) 'identity)
              :on-message (or (process-get server :on-message) (lambda (ws frame)))
+             :on-close (lexical-let ((user-method
+                                      (or (process-get server :on-close) 'identity)))
+                         (lambda (ws)
+                           (setq websocket-server-websockets
+                                 (remove ws websocket-server-websockets))
+                           (funcall user-method ws)))
              :on-error (or (process-get server :on-error)
                            'websocket-default-error-handler)
              :protocols (process-get server :protocol)
              :extensions (mapcar 'car (process-get server :extensions)))))
+    (add-to-list 'websocket-server-websockets ws)
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)
     ;; set-process-filter-multibyte is obsolete, but make-network-process's
     ;; :filter-multibyte arg does not seem to do anything.
-    (set-process-filter-multibyte client nil)))
+    (set-process-filter-multibyte client nil)
+    (set-process-sentinel client
+     (lambda (process change)
+       (let ((websocket (process-get process :websocket)))
+         (websocket-debug websocket "State change to %s" change)
+         (unless (eq 'closed (websocket-ready-state websocket))
+           (websocket-try-callback 'websocket-on-close 'on-close websocket)))))))
 
 (defun websocket-create-headers (url key protocol extensions)
   "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.

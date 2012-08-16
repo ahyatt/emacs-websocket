@@ -323,18 +323,21 @@
                                                              :completep t))))))))
 
 (ert-deftest websocket-close ()
-  (let ((sent-frames))
+  (let ((sent-frames)
+        (processes-deleted))
     (flet ((websocket-send (websocket frame) (push frame sent-frames))
            (websocket-openp (websocket) t)
            (kill-buffer (buffer))
-           (process-buffer (conn)))
+           (delete-process (proc))
+           (process-buffer (conn) (add-to-list 'processes-deleted conn)))
       (websocket-close (websocket-inner-create
                         :conn "fake-conn"
                         :url t
                         :accept-string t))
       (should (equal sent-frames (list
                                   (make-websocket-frame :opcode 'close
-                                                        :completep t)))))))
+                                                        :completep t))))
+      (should (equal processes-deleted '("fake-conn"))))))
 
 (ert-deftest websocket-outer-filter ()
   (let* ((fake-ws (websocket-inner-create
@@ -539,3 +542,31 @@
                         ws
                         (plist-get header-info :protocols)
                         (plist-get header-info :extension)))))))
+
+(ert-deftest websocket-server-close ()
+  (let ((websocket-server-websockets
+         (list (websocket-inner-create :conn 'conn-a :url t :accept-string t
+                                       :server-conn 'a
+                                       :ready-state 'open)
+               (websocket-inner-create :conn 'conn-b :url t :accept-string t
+                                       :server-conn 'b
+                                       :ready-state 'open)
+               (websocket-inner-create :conn 'conn-c :url t :accept-string t
+                                       :server-conn 'b
+                                       :ready-state 'closed)))
+        (deleted-processes)
+        (closed-websockets))
+    (flet ((delete-process (conn) (add-to-list 'deleted-processes conn))
+           (websocket-close (ws)
+                            ;; we always remove on closing in the
+                            ;; actual code.
+                            (setq websocket-server-websockets
+                                  (remove ws websocket-server-websockets))
+                            (should-not (eq (websocket-ready-state ws) 'closed))
+                            (add-to-list 'closed-websockets ws)))
+      (websocket-server-close 'b))
+    (should (equal deleted-processes '(b)))
+    (should (eq 1 (length closed-websockets)))
+    (should (eq 'conn-b (websocket-conn (car closed-websockets))))
+    (should (eq 1 (length websocket-server-websockets)))
+    (should (eq 'conn-a (websocket-conn (car websocket-server-websockets))))))

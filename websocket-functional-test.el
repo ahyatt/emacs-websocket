@@ -91,14 +91,16 @@
 
 (message "Testing with emacs websocket server.")
 (message "If this does not pass, make sure your firewall allows the connection.")
-
+(setq wstest-closed nil)
 (setq server-conn (websocket-server
                    9998
                    :on-message (lambda (ws frame)
                                  (message "Server received text!")
                                  (websocket-send-text ws
                                   (websocket-frame-payload frame)))
-                   :on-open (lambda (websocket) "Client connection opened!")))
+                   :on-open (lambda (websocket) "Client connection opened!")
+                   :on-close (lambda (websocket)
+                               (setq wstest-closed t))))
 
 (setq wstest-msgs nil
       wstest-ws
@@ -113,4 +115,5 @@
 (sleep-for 0.3)
 (assert (equal (car wstest-msgs) "Hi to self!"))
 (websocket-server-close server-conn)
+(assert wstest-closed)
 (message "\nAll tests passed!\n")
