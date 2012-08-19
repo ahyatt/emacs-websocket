@@ -1,4 +1,4 @@
-;;; websocket.el --- Emacs WebSocket client
+;;; websocket.el --- Emacs WebSocket client and server
 
 ;; Copyright (c) 2010 Andrew Hyatt
 ;;
@@ -71,7 +71,7 @@ A websocket struct is created with `websocket-open'.
 The W3C API \"bufferedAmount\" call is not currently implemented,
 since there is no elisp API to get the buffered amount from the
 subprocess.  There may, in fact, be output data buffered,
-however, when the `on-message' or `close-callback' callbacks are
+however, when the `on-message' or `on-close' callbacks are
 called.
 
 `on-open', `on-message', `on-close', and `on-error' are described
