@@ -689,6 +689,7 @@ connection is invalid, the connection will be closed."
         (end-point 0)
         (text (concat (websocket-inflight-input websocket) output))
         (header-end-pos))
+    (setf (websocket-inflight-input websocket) nil)
     ;; If we've received the complete header, check to see if we've
     ;; received the desired handshake.
     (when (and (eq 'connecting (websocket-ready-state websocket))

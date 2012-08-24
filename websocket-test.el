@@ -374,7 +374,8 @@
                                        (substring websocket-frames 0 2)))
       (should open-callback-called)
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
-      (should (equal (list frame2 frame1) processed-frames)))
+      (should (equal (list frame2 frame1) processed-frames))
+      (should-not (websocket-inflight-input fake-ws)))
     (flet ((websocket-ready-state (websocket) 'connecting)
            (websocket-close (websocket)))
       (should (eq 500 (cdr (should-error
