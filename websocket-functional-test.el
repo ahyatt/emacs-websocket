@@ -58,6 +58,12 @@
 (assert (null (websocket-openp wstest-ws)))
 
 (stop-process wstest-server-proc)
+(kill-process wstest-server-proc)
+
+;; Make sure the processes are closed.  This happens asynchronously,
+;; so let's wait for it.
+(sleep-for 1)
+(assert (null (process-list)) t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Remote server test, with wss ;;
@@ -116,4 +122,8 @@
 (assert (equal (car wstest-msgs) "Hi to self!"))
 (websocket-server-close server-conn)
 (assert wstest-closed)
+(websocket-close wstest-ws)
+
+(sleep-for 1)
+(assert (null (process-list)) t)
 (message "\nAll tests passed!\n")
