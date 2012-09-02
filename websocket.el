@@ -47,7 +47,6 @@
 
 (require 'bindat)
 (require 'url-parse)
-(require 'calc)
 (eval-when-compile (require 'cl))
 
 ;;; Code:
@@ -197,16 +196,18 @@ This is based on the KEY from the Sec-WebSocket-Key header."
 (defun websocket-get-bytes (s n)
   "From string S, retrieve the value of N bytes.
 Return the value as an unsigned integer.  The value N must be a
-power of 2, up to 8."
+power of 2, up to 8.
+
+We support getting frames up to 4294967295 bytes (2^32) long."
   (if (= n 8)
     (let* ((32-bit-parts
             (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
-           (cval (calc-eval '("(2^32 * $ + $$)") nil
-                            (aref 32-bit-parts 0) (aref 32-bit-parts 1))))
-      (when (calc-eval '("$ > $$") 'pred cval most-positive-fixnum)
+           (cval
+            (logior (lsh (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
+      (if (= (aref 32-bit-parts 0) 0)
+          cval
         (signal 'websocket-unparseable-frame
-                "Frame value found too large to parse!"))
-      (string-to-number cval))
+                "Frame value found too large to parse!")))
     ;; n is not 8
     (bindat-get-field
      (condition-case err
@@ -226,26 +227,23 @@ power of 2, up to 8."
 
 (defun websocket-to-bytes (val nbytes)
   "Encode the integer VAL in NBYTES of data.
-NBYTES much be a power of 2, up to 8."
-  (unless (or (and (< nbytes 8)
-                   (< val (expt 2 (* 8 nbytes))))
-              (and (= nbytes 8)
-                   (calc-eval "% < 2^(8 * %%)" 'pred val nbytes)))
+NBYTES much be a power of 2, up to 8.
+
+This supports encoding values up to "
+  (when (and (< nbytes 8)
+             (> val (expt 2 (* 8 nbytes))))
     ;; not a user-facing error, this must be caused from an error in
     ;; this library
     (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
            val nbytes))
   (if (= nbytes 8)
       (progn
-        (when (calc-eval "$ < 4294967296" 'pred most-positive-fixnum)
-          (signal 'websocket-frame-too-large
-                  most-positive-fixnum))
-        ;; Need to use calc even though at this point things are manageable,
-        ;; since some emacs cannot parse the value 4294967296, even if
-        ;; they never evaluate it.
-        (bindat-pack `((:val vec 2 u32))
-                     `((:val . [,(calc-eval "floor($ / 4294967296)" 'raw val)
-                                ,(calc-eval "$ % 4294967296" 'raw val)]))))
+        (let ((hi-32bits (lsh val -32))
+              (low-32bits (logand #xffffffff val)))
+          (when (> hi-32bits 0)
+            (signal 'websocket-frame-too-large val))
+          (bindat-pack `((:val vec 2 u32))
+                       `((:val . [,hi-32bits ,low-32bits])))))
     (bindat-pack
      `((:val ,(cond ((= nbytes 1) 'u8)
                     ((= nbytes 2) 'u16)
@@ -507,8 +505,8 @@ also the frame.
 
 The frame may be too large for this buid of emacs, in which case
 `websocket-frame-too-large' is returned, with the data of the
-system's `most-positive-fixnum', whose length was exceeded.  This
-also has the `websocket-error' condition."
+size of the frame which was too large to process.  This also has
+the `websocket-error' condition."
   (unless (websocket-check frame)
     (signal 'websocket-illegal-frame frame))
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"

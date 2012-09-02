@@ -51,10 +51,11 @@
 (ert-deftest websocket-get-bytes ()
   (should (equal #x5 (websocket-get-bytes "\x5" 1)))
   (should (equal #x101 (websocket-get-bytes "\x1\x1" 2)))
-  (let ((f (lambda () (websocket-get-bytes "\x0\x0\x0\x1\x0\x0\x0\x1" 8))))
-    (if websocket-test-64-bit-p
-        (should (equal #x100000001 (funcall f)))
-      (should-error (funcall f) :type 'websocket-unparseable-frame)))
+  (should (equal #xffffff
+                 (websocket-get-bytes "\x0\x0\x0\x0\x0\xFF\xFF\xFF" 8)))
+  (when websocket-test-64-bit-p
+    (should-error (websocket-get-bytes "\x0\x0\x0\x1\x0\x0\x0\x1" 8)
+                  :type 'websocket-unparseable-frame))
   (should-error (websocket-get-bytes "\x0\x0\x0" 3))
   (should-error (websocket-get-bytes "\x0" 2) :type 'websocket-unparseable-frame))
 
