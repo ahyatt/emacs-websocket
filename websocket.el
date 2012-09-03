@@ -198,13 +198,15 @@ This is based on the KEY from the Sec-WebSocket-Key header."
 Return the value as an unsigned integer.  The value N must be a
 power of 2, up to 8.
 
-We support getting frames up to 4294967295 bytes (2^32) long."
+We support getting frames up to 536870911 bytes (2^29 - 1),
+approximately 537M long."
   (if (= n 8)
     (let* ((32-bit-parts
             (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
            (cval
             (logior (lsh (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
-      (if (= (aref 32-bit-parts 0) 0)
+      (if (and (= (aref 32-bit-parts 0) 0)
+               (= (lsh (aref 32-bit-parts 1) -29) 0))
           cval
         (signal 'websocket-unparseable-frame
                 "Frame value found too large to parse!")))
@@ -229,7 +231,8 @@ We support getting frames up to 4294967295 bytes (2^32) long."
   "Encode the integer VAL in NBYTES of data.
 NBYTES much be a power of 2, up to 8.
 
-This supports encoding values up to "
+This supports encoding values up to 536870911 bytes (2^29 - 1),
+approximately 537M long."
   (when (and (< nbytes 8)
              (> val (expt 2 (* 8 nbytes))))
     ;; not a user-facing error, this must be caused from an error in
@@ -240,7 +243,7 @@ This supports encoding values up to "
       (progn
         (let ((hi-32bits (lsh val -32))
               (low-32bits (logand #xffffffff val)))
-          (when (> hi-32bits 0)
+          (when (or (> hi-32bits 0) (> (lsh low-32bits -29) 0))
             (signal 'websocket-frame-too-large val))
           (bindat-pack `((:val vec 2 u32))
                        `((:val . [,hi-32bits ,low-32bits])))))

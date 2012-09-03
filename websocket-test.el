@@ -45,17 +45,13 @@
   "\x81\x85\x37\xfa\x21\x3d\x7f\x9f\x4d\x51\x58"
   "'Hello' masked string example, taken from the RFC.")
 
-(defconst websocket-test-64-bit-p
-  (calc-eval '("2^32 <= $") 'pred most-positive-fixnum))
-
 (ert-deftest websocket-get-bytes ()
   (should (equal #x5 (websocket-get-bytes "\x5" 1)))
   (should (equal #x101 (websocket-get-bytes "\x1\x1" 2)))
   (should (equal #xffffff
                  (websocket-get-bytes "\x0\x0\x0\x0\x0\xFF\xFF\xFF" 8)))
-  (when websocket-test-64-bit-p
-    (should-error (websocket-get-bytes "\x0\x0\x0\x1\x0\x0\x0\x1" 8)
-                  :type 'websocket-unparseable-frame))
+  (should-error (websocket-get-bytes "\x0\x0\x0\x1\x0\x0\x0\x1" 8)
+                :type 'websocket-unparseable-frame)
   (should-error (websocket-get-bytes "\x0\x0\x0" 3))
   (should-error (websocket-get-bytes "\x0" 2) :type 'websocket-unparseable-frame))
 
@@ -276,10 +272,8 @@
   ;; help test websocket-to-bytes.
   (should (equal 30 (websocket-get-bytes (websocket-to-bytes 30 1) 1)))
   (should (equal 300 (websocket-get-bytes (websocket-to-bytes 300 2) 2)))
-  (let ((f (lambda () (websocket-to-bytes 70000 8))))
-    (if websocket-test-64-bit-p
-        (should (equal 70000 (websocket-get-bytes (funcall f) 8)))
-      (should-error (funcall f))))
+  (should (equal 70000 (websocket-get-bytes (websocket-to-bytes 70000 8) 8)))
+  (should-error (websocket-to-bytes 536870912 8) :type 'websocket-frame-too-large)
   (should-error (websocket-to-bytes 30 3))
   (should-error (websocket-to-bytes 300 1))
   ;; I'd like to test the error for 32-byte systems on 8-byte lengths,
@@ -295,7 +289,7 @@
              websocket-test-hello
              (websocket-encode-frame
               (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))
-    (dolist (len (if websocket-test-64-bit-p '(200 70000) '(200 60000)))
+    (dolist (len '(200 70000))
       (let ((long-string (make-string len ?x)))
         (should (equal long-string
                        (websocket-frame-payload
