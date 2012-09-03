@@ -480,8 +480,12 @@ has connection termination."
 
 (defun websocket-send-text (websocket text)
   "To the WEBSOCKET, send TEXT as a complete frame."
-  (websocket-send websocket (make-websocket-frame :opcode 'text :payload text
-                                                  :completep t)))
+  (websocket-send
+   websocket
+   (make-websocket-frame :opcode 'text
+                         :payload (encode-coding-string
+                                   text 'raw-text)
+                         :completep t)))
 
 (defun websocket-check (frame)
   "Check FRAME for correctness, returning true if correct."

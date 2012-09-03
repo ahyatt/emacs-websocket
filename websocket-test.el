@@ -400,6 +400,13 @@
          (should-not on-open-calledp)
          (should websocket-closed-calledp))))))
 
+(ert-deftest websocket-send-text ()
+  (flet ((websocket-send (ws frame)
+                         (should (equal
+                                  (websocket-frame-payload frame)
+                                  "\344\275\240\345\245\275"))))
+    (websocket-send-text nil "你好")))
+
 (ert-deftest websocket-send ()
   (let ((ws (websocket-inner-create :conn t :url t :accept-string t)))
     (flet ((websocket-ensure-connected (websocket))
