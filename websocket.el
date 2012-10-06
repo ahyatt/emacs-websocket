@@ -370,7 +370,7 @@ the frame finishes.  If the frame is not completed, return NIL."
 ;; Error symbols in use by the library
 (put 'websocket-unsupported-protocol 'error-conditions
      '(error websocket-error websocket-unsupported-protocol))
-(put 'websocket-unsupported-protocol 'error-message "Unsupport websocket protocol")
+(put 'websocket-unsupported-protocol 'error-message "Unsupported websocket protocol")
 (put 'websocket-received-error-http-response 'error-conditions
      '(error websocket-error websocket-received-error-http-response))
 (put 'websocket-received-error-http-response 'error-message
