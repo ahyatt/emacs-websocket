@@ -620,7 +620,12 @@ websocket processing, all of them having the error-condition
 `websocket-error' in addition to their own symbol:
 
 `websocket-unsupported-protocol': Data in the error signal is the
-protocol (such as \"wss\") that is unsupported.
+protocol that is unsupported.  For example, giving a URL starting
+with http by mistake raises this error.
+
+`websocket-wss-needs-emacs-24': Trying to connect wss protocol
+using Emacs < 24 raises this error.  You can catch this error
+also by `websocket-unsupported-protocol'.
 
 `websocket-received-error-http-response': Data in the error
 signal is the integer error number.
