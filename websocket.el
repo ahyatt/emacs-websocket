@@ -370,7 +370,12 @@ the frame finishes.  If the frame is not completed, return NIL."
 ;; Error symbols in use by the library
 (put 'websocket-unsupported-protocol 'error-conditions
      '(error websocket-error websocket-unsupported-protocol))
-(put 'websocket-unsupported-protocol 'error-message "Unsupport websocket protocol")
+(put 'websocket-unsupported-protocol 'error-message "Unsupported websocket protocol")
+(put 'websocket-wss-needs-emacs-24 'error-conditions
+     '(error websocket-error websocket-unsupported-protocol
+             websocket-wss-needs-emacs-24))
+(put 'websocket-wss-needs-emacs-24 'error-message
+     "wss protocol is not supported for Emacs before version 24.")
 (put 'websocket-received-error-http-response 'error-conditions
      '(error websocket-error websocket-received-error-http-response))
 (put 'websocket-received-error-http-response 'error-message
@@ -615,7 +620,12 @@ websocket processing, all of them having the error-condition
 `websocket-error' in addition to their own symbol:
 
 `websocket-unsupported-protocol': Data in the error signal is the
-protocol (such as \"wss\") that is unsupported.
+protocol that is unsupported.  For example, giving a URL starting
+with http by mistake raises this error.
+
+`websocket-wss-needs-emacs-24': Trying to connect wss protocol
+using Emacs < 24 raises this error.  You can catch this error
+also by `websocket-unsupported-protocol'.
 
 `websocket-received-error-http-response': Data in the error
 signal is the integer error number.
@@ -646,7 +656,7 @@ describing the problem with the frame.
                          (condition-case-no-debug nil
                              (open-network-stream name buf host port :type type :nowait nil)
                            (wrong-number-of-arguments
-                            (signal 'websocket-unsupported-protocol "wss")))))
+                            (signal 'websocket-wss-needs-emacs-24 "wss")))))
                  (signal 'websocket-unsupported-protocol (url-type url-struct))))
          (websocket (websocket-inner-create
                      :conn conn
