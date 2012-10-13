@@ -11,19 +11,7 @@ An example of how to use the library is in the
 This library is compatible with emacs 23 and 24, although only emacs
 24 support secure websockets.
 
-* Version
-
-** Version 1.0 requiements
-This version should be usable, but needs the following:
-
-- 3 clients using this module.  Without this many clients, it's hard
-  to be sure the API is right, or there isn't a hidden bug in the
-  module.
-
-Notably, this project is experimenting with an eieio-based API (see
-the EIEIO branch).  Please send us any feedback about the API.
-
-** Version release checklist
+* Version release checklist
 
 Each version that is released should be checked with this checklist:
 
@@ -37,6 +25,7 @@ Each version that is released should be checked with this checklist:
 
 - [[https://github.com/tkf/emacs-ipython-notebook][Emacs IPython Notebook]]
 - [[https://github.com/syohex/emacs-realtime-markdown-viewer][Emacs Realtime Markdown Viewer]]
+- [[https://github.com/jscheid/kite][Kite]]
 
 If you are using this module for your own emacs package, please let me
 know by editing this file, adding your project, and sending a pull
