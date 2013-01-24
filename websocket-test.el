@@ -573,3 +573,24 @@
     (should (eq 'conn-b (websocket-conn (car closed-websockets))))
     (should (eq 1 (length websocket-server-websockets)))
     (should (eq 'conn-a (websocket-conn (car websocket-server-websockets))))))
+
+(ert-deftest websocket-default-error-handler ()
+  (flet ((try-error
+          (callback-type err expected-message)
+          (flet ((display-warning
+                  (type message &optional level buffer-name)
+                  (should (eq type 'websocket))
+                  (should (eq level :error))
+                  (should (string= message expected-message))))
+            (websocket-default-error-handler nil
+                                             callback-type
+                                             err))))
+    (try-error
+     'on-message
+     '(end-of-buffer)
+     "in callback `on-message': End of buffer")
+
+    (try-error
+     'on-close
+     '(wrong-number-of-arguments 1 2)
+     "in callback `on-close': Wrong number of arguments: 1, 2")))

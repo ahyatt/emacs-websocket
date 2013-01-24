@@ -363,9 +363,25 @@ the frame finishes.  If the frame is not completed, return NIL."
        :length (if payloadp payload-end 1)
        :completep (> fin 0)))))
 
+(defun websocket-format-error (err)
+  "Format an error message like command level does. ERR should be
+a cons of error symbol and error data."
+
+  ;; Formatting code adapted from `edebug-report-error'
+  (concat (or (get (car err) 'error-message)
+              (format "peculiar error (%s)" (car err)))
+          (when (cdr err)
+            (format ": %s"
+                    (mapconcat #'prin1-to-string
+                               (cdr err) ", ")))))
+
 (defun websocket-default-error-handler (websocket type err)
   "The default error handler used to handle errors in callbacks."
-  (message "Error found in callback `%S': %s" type (cdr err)))
+  (display-warning 'websocket
+                   (format "in callback `%S': %s"
+                           type
+                           (websocket-format-error err))
+                   :error))
 
 ;; Error symbols in use by the library
 (put 'websocket-unsupported-protocol 'error-conditions
