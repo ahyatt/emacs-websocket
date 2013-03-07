@@ -119,10 +119,14 @@ This is recommended to be true, and some servers will refuse to
 communicate with unmasked clients.")
 
 (defvar websocket-callback-debug-on-error nil
-  "If true, when an error happens in a client callback, invoke the debugger.
-Having this on can cause issues with missing frames if the debugger is
-exited by quitting instead of continuing, so it's best to have this set
-to `nil' unless it is especially needed.")
+  "If true, when an error happens in a client callback, pass the
+error to the websocket's on-error handler. If set to :debug the
+error is not handled by websocket and, unless there is an outer
+condition-case or ignore-errors, the debugger will be invoked.
+
+Having this on can cause issues with missing frames if the
+debugger is exited by quitting instead of continuing, so it's
+best to have this set to `nil' unless it is especially needed.")
 
 (defmacro websocket-document-function (function docstring)
   "Document FUNCTION with DOCSTRING.  Use this for defstruct accessor etc."
@@ -173,15 +177,16 @@ If an error happens, it is handled according to
   (let ((args rest)
         (debug-on-error websocket-callback-debug-on-error))
     (push websocket args)
-    (if websocket-callback-debug-on-error
-        (condition-case err
-            (apply (funcall websocket-callback websocket) args)
-          ((debug error) (funcall (websocket-on-error websocket)
-                                  websocket callback-type err)))
-      (condition-case err
-          (apply (funcall websocket-callback websocket) args)
-        (error (funcall (websocket-on-error websocket) websocket
-                        callback-type err))))))
+    (ecase websocket-callback-debug-on-error
+      (:debug (apply (funcall websocket-callback websocket) args))
+      ((t) (condition-case err
+               (apply (funcall websocket-callback websocket) args)
+             ((debug error) (funcall (websocket-on-error websocket)
+                                     websocket callback-type err))))
+      ((nil) (condition-case err
+                 (apply (funcall websocket-callback websocket) args)
+               (error (funcall (websocket-on-error websocket) websocket
+                               callback-type err)))))))
 
 (defun websocket-genkey ()
   "Generate a key suitable for the websocket handshake."
