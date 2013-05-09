@@ -842,6 +842,7 @@ connection, which should be kept in order to pass to
              :protocols (process-get server :protocol)
              :extensions (mapcar 'car (process-get server :extensions)))))
     (add-to-list 'websocket-server-websockets ws)
+    (set-process-coding-system client 'unix 'unix)
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)
     ;; set-process-filter-multibyte is obsolete, but make-network-process's
