@@ -1,5 +1,9 @@
 ;; Simple functional testing
 ;; Usage: emacs -batch -Q -L . -l websocket-functional-test.el
+;;
+;; Note: this functional tests requires that you have python with the
+;; Tornado web server.  See http://www.tornadoweb.org/en/stable/ for
+;; information on aquiring.
 
 (require 'tls)   ;; tests a particular bug we had on emacs 23
 (setq debug-on-error t)
