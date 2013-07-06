@@ -669,7 +669,7 @@ describing the problem with the frame.
                        (if (eq type 'plain)
                            (make-network-process :name name :buffer buf :host host
                                                  :service port :nowait nil)
-                         (condition-case-no-debug nil
+                         (condition-case-unless-debug nil
                              (open-network-stream name buf host port :type type :nowait nil)
                            (wrong-number-of-arguments
                             (signal 'websocket-wss-needs-emacs-24 "wss")))))
