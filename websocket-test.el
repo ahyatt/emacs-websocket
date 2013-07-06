@@ -371,8 +371,8 @@
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
       (should (equal (list frame2 frame1) processed-frames))
       (should-not (websocket-inflight-input fake-ws)))
-    (flet ((websocket-ready-state (websocket) 'connecting)
-           (websocket-close (websocket)))
+    (flet ((websocket-close (websocket)))
+      (setf (websocket-ready-state fake-ws) 'connecting)
       (should (eq 500 (cdr (should-error
                                 (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")
                                 :type 'websocket-received-error-http-response)))))))
