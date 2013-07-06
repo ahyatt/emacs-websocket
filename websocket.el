@@ -845,9 +845,7 @@ connection, which should be kept in order to pass to
     (set-process-coding-system client 'unix 'unix)
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)
-    ;; set-process-filter-multibyte is obsolete, but make-network-process's
-    ;; :filter-multibyte arg does not seem to do anything.
-    (set-process-filter-multibyte client nil)
+    (set-process-coding-system client 'binary)
     (set-process-sentinel client
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))

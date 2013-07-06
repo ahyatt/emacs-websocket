@@ -17,9 +17,7 @@ Each version that is released should be checked with this checklist:
 
 - [ ] All ert test passing
 - [ ] Functional test passing on emacs 23 and 24
-- [ ] websocket.el byte compiling cleanly, except for these exceptions:
-  - =set-process-filter-multibyte= is obsolete, yet I cannot find any
-    other way of ensuring my filter has multibyte disabled.
+- [ ] websocket.el byte compiling cleanly.
 
 * Existing clients:
 
