@@ -1,13 +1,13 @@
-;; websocket-test.el --- Unit tests for the websocket layer
+;;; websocket-test.el --- Unit tests for the websocket layer
 
-;; Copyright (c) 2010 Andrew Hyatt
+;; Copyright (c) 2013  Free Software Foundation, Inc.
 ;;
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
-;; published by the Free Software Foundation; either version 2 of the
+;; published by the Free Software Foundation; either version 3 of the
 ;; License, or (at your option) any later version.
 ;;
 ;; This program is distributed in the hope that it will be useful, but
@@ -16,9 +16,7 @@
 ;; General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with this program; if not, write to the Free Software
-;; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-;; 02110-1301, USA.
+;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;; This defines and runs ert unit tests.  You can download ert from:

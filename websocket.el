@@ -1,15 +1,15 @@
 ;;; websocket.el --- Emacs WebSocket client and server
 
-;; Copyright (c) 2010 Andrew Hyatt
-;;
+;; Copyright (c) 2013  Free Software Foundation, Inc.
+
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.01
+;; Version: 1.1
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
-;; published by the Free Software Foundation; either version 2 of the
+;; published by the Free Software Foundation; either version 3 of the
 ;; License, or (at your option) any later version.
 ;;
 ;; This program is distributed in the hope that it will be useful, but
@@ -18,16 +18,14 @@
 ;; General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with this program; if not, write to the Free Software
-;; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-;; 02110-1301, USA.
+;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;; This implements RFC 6455, which can be found at
 ;; http://tools.ietf.org/html/rfc6455.
 ;;
-;; This library contains code to connect emacs as a client to a
-;; websocket server, and for emacs to act as a server for websocket
+;; This library contains code to connect Emacs as a client to a
+;; websocket server, and for Emacs to act as a server for websocket
 ;; connections.
 ;;
 ;; Websockets clients are created by calling `websocket-open', which
@@ -101,7 +99,7 @@ same for the protocols.
   accept-string
   (inflight-input nil))
 
-(defvar websocket-version "1.01"
+(defvar websocket-version "1.1"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
@@ -122,7 +120,7 @@ communicate with unmasked clients.")
   "If true, when an error happens in a client callback, invoke the debugger.
 Having this on can cause issues with missing frames if the debugger is
 exited by quitting instead of continuing, so it's best to have this set
-to `nil' unless it is especially needed.")
+to nil unless it is especially needed.")
 
 (defmacro websocket-document-function (function docstring)
   "Document FUNCTION with DOCSTRING.  Use this for defstruct accessor etc."
@@ -212,7 +210,7 @@ approximately 537M long."
                 "Frame value found too large to parse!")))
     ;; n is not 8
     (bindat-get-field
-     (condition-case err
+     (condition-case _
          (bindat-unpack
           `((:val
              ,(cond ((= n 1) 'u8)
@@ -364,8 +362,8 @@ the frame finishes.  If the frame is not completed, return NIL."
        :completep (> fin 0)))))
 
 (defun websocket-format-error (err)
-  "Format an error message like command level does. ERR should be
-a cons of error symbol and error data."
+  "Format an error message like command level does.
+ERR should be a cons of error symbol and error data."
 
   ;; Formatting code adapted from `edebug-report-error'
   (concat (or (get (car err) 'error-message)
@@ -375,7 +373,7 @@ a cons of error symbol and error data."
                     (mapconcat #'prin1-to-string
                                (cdr err) ", ")))))
 
-(defun websocket-default-error-handler (websocket type err)
+(defun websocket-default-error-handler (_websocket type err)
   "The default error handler used to handle errors in callbacks."
   (display-warning 'websocket
                    (format "in callback `%S': %s"
@@ -418,11 +416,11 @@ a cons of error symbol and error data."
      "The frame being sent is too large for this emacs to handle")
 
 (defun websocket-intersect (a b)
-  "Simple list intersection, should function like common lisp's `intersection'."
+  "Simple list intersection, should function like Common Lisp's `intersection'."
   (let ((result))
     (dolist (elem a (nreverse result))
       (when (member elem b)
-        (add-to-list 'result elem)))))
+        (push elem result)))))
 
 (defun websocket-get-debug-buffer-create (websocket)
   "Get or create the buffer corresponding to WEBSOCKET."
@@ -531,7 +529,7 @@ If the websocket is closed a signal `websocket-closed' is sent,
 also with `websocket-error' condition.  The data in the signal is
 also the frame.
 
-The frame may be too large for this buid of emacs, in which case
+The frame may be too large for this buid of Emacs, in which case
 `websocket-frame-too-large' is returned, with the data of the
 size of the frame which was too large to process.  This also has
 the `websocket-error' condition."
@@ -585,7 +583,7 @@ connecting or open."
 ;;;;;;;;;;;;;;;;;;;;;;
 
 (defun* websocket-open (url &key protocols extensions (on-open 'identity)
-                            (on-message (lambda (w f))) (on-close 'identity)
+                            (on-message (lambda (_w _f))) (on-close 'identity)
                             (on-error 'websocket-default-error-handler))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
@@ -717,7 +715,6 @@ is no more output or the connection closes.  If the websocket
 connection is invalid, the connection will be closed."
   (websocket-debug websocket "Received: %s" output)
   (let ((start-point)
-        (end-point 0)
         (text (concat (websocket-inflight-input websocket) output))
         (header-end-pos))
     (setf (websocket-inflight-input websocket) nil)
@@ -763,23 +760,23 @@ of populating the list of server extensions to WEBSOCKET."
       (dolist (protocol (websocket-protocols websocket))
         (websocket-debug websocket "Checking for protocol match: %s"
                          protocol)
-        (let ((protocols))
-          (if (string-match
-               (format "\r\nSec-Websocket-Protocol: %s\r\n"
-                       protocol) output)
-              (add-to-list 'protocols protocol)
-            (signal 'websocket-invalid-header
-                    "Incorrect or missing protocol returned by the server."))
+        (let ((protocols
+               (if (string-match (format "\r\nSec-Websocket-Protocol: %s\r\n"
+                                         protocol)
+                                 output)
+                   (list protocol)
+                 (signal 'websocket-invalid-header
+                         "Incorrect or missing protocol returned by the server."))))
           (setf (websocket-negotiated-protocols websocket) protocols))))
     (let* ((extensions (websocket-parse-repeated-field
                         output
                         "Sec-WebSocket-Extensions"))
            (extra-extensions))
       (dolist (ext extensions)
-        (when (not (member
-                    (first (split-string ext "; ?"))
-                    (websocket-extensions websocket)))
-          (add-to-list 'extra-extensions (first (split-string ext "; ?")))))
+        (let ((x (first (split-string ext "; ?"))))
+          (unless (or (member x (websocket-extensions websocket))
+                      (member x extra-extensions))
+            (push x extra-extensions))))
       (when extra-extensions
         (signal 'websocket-invalid-header
                 (format "Non-requested extensions returned by server: %S"
@@ -817,7 +814,8 @@ connection, which should be kept in order to pass to
     (dolist (ws websocket-server-websockets)
       (when (eq (websocket-server-conn ws) conn)
         (if (eq (websocket-ready-state ws) 'closed)
-            (add-to-list 'to-delete ws)
+            (unless (member ws to-delete)
+              (push ws to-delete))
           (websocket-close ws))))
     (dolist (ws to-delete)
       (setq websocket-server-websockets (remove ws websocket-server-websockets))))
@@ -830,7 +828,7 @@ connection, which should be kept in order to pass to
              :conn client
              :url client
              :on-open (or (process-get server :on-open) 'identity)
-             :on-message (or (process-get server :on-message) (lambda (ws frame)))
+             :on-message (or (process-get server :on-message) (lambda (_ws _frame)))
              :on-close (lexical-let ((user-method
                                       (or (process-get server :on-close) 'identity)))
                          (lambda (ws)
@@ -841,7 +839,8 @@ connection, which should be kept in order to pass to
                            'websocket-default-error-handler)
              :protocols (process-get server :protocol)
              :extensions (mapcar 'car (process-get server :extensions)))))
-    (add-to-list 'websocket-server-websockets ws)
+    (unless (member ws websocket-server-websockets)
+      (push ws websocket-server-websockets))
     (set-process-coding-system client 'unix 'unix)
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)
