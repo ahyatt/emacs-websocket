@@ -849,7 +849,9 @@ connection, which should be kept in order to pass to
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
          (websocket-debug websocket "State change to %s" change)
-         (unless (eq 'closed (websocket-ready-state websocket))
+         (when (and
+                (member (process-status process) '(closed failed exit signal))
+                (not (eq 'closed (websocket-ready-state websocket))))
            (websocket-try-callback 'websocket-on-close 'on-close websocket)))))))
 
 (defun websocket-create-headers (url key protocol extensions)
