@@ -316,7 +316,8 @@
       (websocket-close (websocket-inner-create
                         :conn "fake-conn"
                         :url t
-                        :accept-string t))
+                        :accept-string t
+                        :on-close 'identity))
       (should (equal sent-frames (list
                                   (make-websocket-frame :opcode 'close
                                                         :completep t))))
