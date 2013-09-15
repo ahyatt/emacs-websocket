@@ -689,7 +689,11 @@ describing the problem with the frame.
      conn
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
-         (websocket-debug websocket "State change to %s" change))))
+         (websocket-debug websocket "State change to %s" change)
+         (when (and
+                (member (process-status process) '(closed failed exit signal))
+                (not (eq 'closed (websocket-ready-state websocket))))
+           (websocket-try-callback 'websocket-on-close 'on-close websocket)))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
@@ -843,7 +847,11 @@ connection, which should be kept in order to pass to
     (set-process-sentinel client
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
-         (websocket-debug websocket "State change to %s" change))))))
+         (websocket-debug websocket "State change to %s" change)
+         (when (and
+                (member (process-status process) '(closed failed exit signal))
+                (not (eq 'closed (websocket-ready-state websocket))))
+           (websocket-try-callback 'websocket-on-close 'on-close websocket)))))))
 
 (defun websocket-create-headers (url key protocol extensions)
   "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
