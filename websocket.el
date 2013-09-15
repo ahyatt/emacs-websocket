@@ -111,11 +111,6 @@ URL of the connection.")
   "The websocket GUID as defined in RFC 6455.
 Do not change unless the RFC changes.")
 
-(defvar websocket-mask-frames t
-  "If true, we mask frames as defined in the spec.
-This is recommended to be true, and some servers will refuse to
-communicate with unmasked clients.")
-
 (defvar websocket-callback-debug-on-error nil
   "If true, when an error happens in a client callback, invoke the debugger.
 Having this on can cause issues with missing frames if the debugger is
@@ -295,13 +290,14 @@ Otherwise we throw the error `websocket-incomplete-frame'."
   (when (< (length s) n)
     (throw 'websocket-incomplete-frame nil)))
 
-(defun websocket-encode-frame (frame)
-  "Encode the FRAME struct to the binary representation."
+(defun websocket-encode-frame (frame should-mask)
+  "Encode the FRAME struct to the binary representation.
+We mask the frame or not, depending on SHOULD-MASK."
   (let* ((opcode (websocket-frame-opcode frame))
          (payload (websocket-frame-payload frame))
          (fin (websocket-frame-completep frame))
          (payloadp (memq opcode '(continuation text binary)))
-         (mask-key (when websocket-mask-frames  (websocket-genbytes 4))))
+         (mask-key (when should-mask (websocket-genbytes 4))))
     (apply 'unibyte-string
            (append (list
                     (logior (cond ((eq opcode 'continuation) 0)
@@ -314,7 +310,7 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                    (when payloadp
                      (list
                       (logior
-                       (if websocket-mask-frames 128 0)
+                       (if should-mask 128 0)
                        (cond ((< (length payload) 126) (length payload))
                              ((< (length payload) 65536) 126)
                              (t 127)))))
@@ -323,11 +319,10 @@ Otherwise we throw the error `websocket-incomplete-frame'."
                                           (cond ((< (length payload) 126) 1)
                                                 ((< (length payload) 65536) 2)
                                                 (t 8))) nil))
-                   (when (and payloadp websocket-mask-frames)
+                   (when (and payloadp should-mask)
                      (append mask-key nil))
                    (when payloadp
-                     (append (if websocket-mask-frames
-                                 (websocket-mask mask-key payload)
+                     (append (if should-mask (websocket-mask mask-key payload)
                                payload)
                              nil))))))
 
@@ -542,7 +537,8 @@ the `websocket-error' condition."
   (unless (websocket-openp websocket)
     (signal 'websocket-closed frame))
   (process-send-string (websocket-conn websocket)
-                       (websocket-encode-frame frame)))
+                       ;; We mask only when we're a client, following the spec.
+                       (websocket-encode-frame frame (not (websocket-server-p websocket)))))
 
 (defun websocket-openp (websocket)
   "Check WEBSOCKET and return non-nil if it is open, and either
@@ -554,6 +550,7 @@ connecting or open."
 (defun websocket-close (websocket)
   "Close WEBSOCKET and erase all the old websocket data."
   (websocket-debug websocket "Closing websocket")
+  (websocket-try-callback 'websocket-on-close 'on-close websocket)
   (when (websocket-openp websocket)
     (websocket-send websocket
                     (make-websocket-frame :opcode 'close
@@ -692,9 +689,10 @@ describing the problem with the frame.
      conn
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
-         (websocket-debug websocket
-                          "State change to %s" change)
-         (unless (eq 'closed (websocket-ready-state websocket))
+         (websocket-debug websocket "State change to %s" change)
+         (when (and
+                (member (process-status process) '(closed failed exit signal))
+                (not (eq 'closed (websocket-ready-state websocket))))
            (websocket-try-callback 'websocket-on-close 'on-close websocket)))))
     (set-process-query-on-exit-flag conn nil)
     (process-send-string conn
@@ -827,6 +825,7 @@ connection, which should be kept in order to pass to
              :server-conn server
              :conn client
              :url client
+             :server-p t
              :on-open (or (process-get server :on-open) 'identity)
              :on-message (or (process-get server :on-message) (lambda (_ws _frame)))
              :on-close (lexical-let ((user-method
@@ -849,7 +848,9 @@ connection, which should be kept in order to pass to
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
          (websocket-debug websocket "State change to %s" change)
-         (unless (eq 'closed (websocket-ready-state websocket))
+         (when (and
+                (member (process-status process) '(closed failed exit signal))
+                (not (eq 'closed (websocket-ready-state websocket))))
            (websocket-try-callback 'websocket-on-close 'on-close websocket)))))))
 
 (defun websocket-create-headers (url key protocol extensions)

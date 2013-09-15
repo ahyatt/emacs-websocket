@@ -282,38 +282,36 @@
 (ert-deftest websocket-encode-frame ()
   ;; We've tested websocket-read-frame, now we can use that to help
   ;; test websocket-encode-frame.
-  (let ((websocket-mask-frames nil))
-    (should (equal
+  (should (equal
              websocket-test-hello
              (websocket-encode-frame
-              (make-websocket-frame :opcode 'text :payload "Hello" :completep t))))
-    (dolist (len '(200 70000))
-      (let ((long-string (make-string len ?x)))
-        (should (equal long-string
-                       (websocket-frame-payload
-                        (websocket-read-frame
-                         (websocket-encode-frame
-                          (make-websocket-frame :opcode 'text
-                                                :payload long-string)))))))))
-  (let ((websocket-mask-frames t))
-    (flet ((websocket-genbytes (n) (substring websocket-test-masked-hello 2 6)))
+              (make-websocket-frame :opcode 'text :payload "Hello" :completep t) nil)))
+  (dolist (len '(200 70000))
+        (let ((long-string (make-string len ?x)))
+          (should (equal long-string
+                         (websocket-frame-payload
+                          (websocket-read-frame
+                           (websocket-encode-frame
+                            (make-websocket-frame :opcode 'text
+                                                  :payload long-string) t)))))))
+  (flet ((websocket-genbytes (n) (substring websocket-test-masked-hello 2 6)))
       (should (equal websocket-test-masked-hello
                      (websocket-encode-frame
                       (make-websocket-frame :opcode 'text :payload "Hello"
-                                            :completep t))))))
+                                            :completep t) t))))
   (should-not
    (websocket-frame-completep
     (websocket-read-frame
      (websocket-encode-frame (make-websocket-frame :opcode 'text
                                                    :payload "Hello"
-                                                   :completep nil)))))
+                                                   :completep nil) t))))
   (dolist (opcode '(close ping pong))
     (should (equal
              opcode
              (websocket-frame-opcode
               (websocket-read-frame
                (websocket-encode-frame (make-websocket-frame :opcode opcode
-                                                             :completep t))))))))
+                                                             :completep t) t)))))))
 
 (ert-deftest websocket-close ()
   (let ((sent-frames)
@@ -326,7 +324,8 @@
       (websocket-close (websocket-inner-create
                         :conn "fake-conn"
                         :url t
-                        :accept-string t))
+                        :accept-string t
+                        :on-close 'identity))
       (should (equal sent-frames (list
                                   (make-websocket-frame :opcode 'close
                                                         :completep t))))
@@ -349,8 +348,8 @@
          (open-callback-called)
          (websocket-frames
           (concat
-           (websocket-encode-frame frame1)
-           (websocket-encode-frame frame2))))
+           (websocket-encode-frame frame1 t)
+           (websocket-encode-frame frame2 t))))
     (flet ((websocket-process-frame
             (websocket frame)
             (lexical-let ((frame frame))

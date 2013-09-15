@@ -107,9 +107,10 @@
         wstest-msgs nil)
   (sleep-for 0.3)
   (assert (websocket-openp wstest-ws))
+  (assert (eq 'open (websocket-ready-state wstest-ws)))
   (assert (null wstest-msgs))
   (websocket-send-text wstest-ws "Hi!")
-  (sleep-for 0.3)
+  (sleep-for 1)
   (assert (equal (car wstest-msgs) "Hi!"))
   (websocket-close wstest-ws))
 
