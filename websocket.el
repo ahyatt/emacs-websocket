@@ -5,7 +5,7 @@
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.1
+;; Version: 1.2
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
