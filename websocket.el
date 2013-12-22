@@ -840,10 +840,9 @@ connection, which should be kept in order to pass to
              :extensions (mapcar 'car (process-get server :extensions)))))
     (unless (member ws websocket-server-websockets)
       (push ws websocket-server-websockets))
-    (set-process-coding-system client 'unix 'unix)
     (process-put client :websocket ws)
     (set-process-filter client 'websocket-server-filter)
-    (set-process-coding-system client 'binary)
+    (set-process-coding-system client 'binary 'binary)
     (set-process-sentinel client
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
