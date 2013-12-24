@@ -556,9 +556,7 @@ connecting or open."
                     (make-websocket-frame :opcode 'close
                                           :completep t))
     (setf (websocket-ready-state websocket) 'closed))
-  (let ((buf (process-buffer (websocket-conn websocket))))
-    (delete-process (websocket-conn websocket))
-    (kill-buffer buf)))
+  (delete-process (websocket-conn websocket)))
 
 (defun websocket-ensure-connected (websocket)
   "If the WEBSOCKET connection is closed, open it."
@@ -650,7 +648,6 @@ describing the problem with the frame.
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
-         (buf-name (format " *%s*" name))
          (coding-system-for-read 'binary)
          (coding-system-for-write 'binary)
          (conn (if (member (url-type url-struct) '("ws" "wss"))
@@ -659,13 +656,12 @@ describing the problem with the frame.
                           (port (if (= 0 (url-port url-struct))
                                     (if (eq type 'tls) 443 80)
                                   (url-port url-struct)))
-                          (host (url-host url-struct))
-                          (buf (get-buffer-create buf-name)))
+                          (host (url-host url-struct)))
                        (if (eq type 'plain)
-                           (make-network-process :name name :buffer buf :host host
+                           (make-network-process :name name :buffer nil :host host
                                                  :service port :nowait nil)
                          (condition-case-unless-debug nil
-                             (open-network-stream name buf host port :type type :nowait nil)
+                             (open-network-stream name nil host port :type type :nowait nil)
                            (wrong-number-of-arguments
                             (signal 'websocket-wss-needs-emacs-24 "wss")))))
                  (signal 'websocket-unsupported-protocol (url-type url-struct))))
@@ -800,6 +796,7 @@ connection, which should be kept in order to pass to
                 :name (format "websocket server on port %d" port)
                 :server t
                 :family 'ipv4
+                :filter 'websocket-server-filter
                 :log 'websocket-server-accept
                 :filter-multibyte nil
                 :plist plist
@@ -841,7 +838,6 @@ connection, which should be kept in order to pass to
     (unless (member ws websocket-server-websockets)
       (push ws websocket-server-websockets))
     (process-put client :websocket ws)
-    (set-process-filter client 'websocket-server-filter)
     (set-process-coding-system client 'binary 'binary)
     (set-process-sentinel client
      (lambda (process change)
