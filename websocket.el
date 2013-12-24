@@ -676,6 +676,7 @@ describing the problem with the frame.
                      :extensions (mapcar 'car extensions)
                      :accept-string
                      (websocket-calculate-accept key))))
+    (unless conn (error "Could not establish the websocket connection to %s" url))
     (process-put conn :websocket websocket)
     (set-process-filter conn
                         (lambda (process output)
