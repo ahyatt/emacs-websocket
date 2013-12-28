@@ -794,7 +794,7 @@ in the websocket client function `websocket-open'.  Returns the
 connection, which should be kept in order to pass to
 `websocket-server-close'."
   (let* ((conn (make-network-process
-                :name (format "websocket server on port %d" port)
+                :name (format "websocket server on port %s" port)
                 :server t
                 :family 'ipv4
                 :filter 'websocket-server-filter
