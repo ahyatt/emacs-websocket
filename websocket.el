@@ -852,32 +852,34 @@ connection, which should be kept in order to pass to
 (defun websocket-create-headers (url key protocol extensions)
   "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
 These are defined as in `websocket-open'."
-  (format (concat "Host: %s\r\n"
-                  "Upgrade: websocket\r\n"
-                  "Connection: Upgrade\r\n"
-                  "Sec-WebSocket-Key: %s\r\n"
-                  "Origin: %s\r\n"
-                  "Sec-WebSocket-Version: 13\r\n"
-                  (when protocol
-                    (concat
-                     (mapconcat (lambda (protocol)
-                                  (format "Sec-WebSocket-Protocol: %s" protocol))
-                                protocol "\r\n")
-                     "\r\n"))
-                  (when extensions
-                    (format "Sec-WebSocket-Extensions: %s\r\n"
-                            (mapconcat
-                             (lambda (ext)
-                               (concat (car ext)
-                                       (when (cdr ext) "; ")
-                                       (when (cdr ext)
-                                         (mapconcat 'identity (cdr ext) "; "))))
-                             extensions ", ")))
-                  "\r\n")
-          (url-host (url-generic-parse-url url))
-          key
-          system-name
-          protocol))
+  (let* ((parsed-url (url-generic-parse-url url))
+         (host-origin (format "%s:%s" (url-host parsed-url) (url-port parsed-url))))
+    (format (concat "Host: %s\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: %s\r\n"
+                    "Origin: %s\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    (when protocol
+                      (concat
+                       (mapconcat (lambda (protocol)
+                                    (format "Sec-WebSocket-Protocol: %s" protocol))
+                                  protocol "\r\n")
+                       "\r\n"))
+                    (when extensions
+                      (format "Sec-WebSocket-Extensions: %s\r\n"
+                              (mapconcat
+                               (lambda (ext)
+                                 (concat (car ext)
+                                         (when (cdr ext) "; ")
+                                         (when (cdr ext)
+                                           (mapconcat 'identity (cdr ext) "; "))))
+                               extensions ", ")))
+                    "\r\n")
+            host-origin
+            key
+            url
+            protocol)))
 
 (defun websocket-get-server-response (websocket client-protocols client-extensions)
   "Get the websocket response from client WEBSOCKET."
