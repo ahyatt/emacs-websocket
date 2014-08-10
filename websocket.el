@@ -856,7 +856,6 @@ These are defined as in `websocket-open'."
                   "Upgrade: websocket\r\n"
                   "Connection: Upgrade\r\n"
                   "Sec-WebSocket-Key: %s\r\n"
-                  "Origin: %s\r\n"
                   "Sec-WebSocket-Version: 13\r\n"
                   (when protocol
                     (concat
@@ -876,7 +875,6 @@ These are defined as in `websocket-open'."
                   "\r\n")
           (url-host (url-generic-parse-url url))
           key
-          system-name
           protocol))
 
 (defun websocket-get-server-response (websocket client-protocols client-extensions)

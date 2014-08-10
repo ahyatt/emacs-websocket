@@ -193,12 +193,10 @@
                    (websocket-negotiated-extensions ws-with-extensions)))))
 
 (ert-deftest websocket-create-headers ()
-  (let ((system-name "mysystem")
-        (base-headers (concat "Host: www.example.com\r\n"
+  (let ((base-headers (concat "Host: www.example.com\r\n"
                               "Upgrade: websocket\r\n"
                               "Connection: Upgrade\r\n"
                               "Sec-WebSocket-Key: key\r\n"
-                              "Origin: mysystem\r\n"
                               "Sec-WebSocket-Version: 13\r\n")))
     (should (equal (concat base-headers "\r\n")
                    (websocket-create-headers "ws://www.example.com/path"
@@ -422,7 +420,6 @@
          (upgrade "Upgrade: websocket")
          (key (format "Sec-Websocket-Key: %s" "key"))
          (version "Sec-Websocket-Version: 13")
-         (origin "Origin: origin")
          (protocol "Sec-Websocket-Protocol: protocol")
          (extensions1 "Sec-Websocket-Extensions: foo")
          (extensions2 "Sec-Websocket-Extensions: bar; baz=2")
@@ -528,7 +525,6 @@
                                    "Upgrade: websocket\r\n"
                                    "Connection: Upgrade\r\n"
                                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-                                   "Origin: http://example.com\r\n"
                                    "Sec-WebSocket-Protocol: chat, superchat\r\n"
                                    "Sec-WebSocket-Version: 13\r\n"))))
                      (should header-info)
