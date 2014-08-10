@@ -319,8 +319,7 @@
     (flet ((websocket-send (websocket frame) (push frame sent-frames))
            (websocket-openp (websocket) t)
            (kill-buffer (buffer))
-           (delete-process (proc))
-           (process-buffer (conn) (add-to-list 'processes-deleted conn)))
+           (delete-process (proc) (add-to-list 'processes-deleted proc)))
       (websocket-close (websocket-inner-create
                         :conn "fake-conn"
                         :url t
