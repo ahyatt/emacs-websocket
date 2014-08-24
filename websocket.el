@@ -5,7 +5,7 @@
 ;; Author: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Maintainer: Andrew Hyatt <ahyatt at gmail dot com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.1
+;; Version: 1.3
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -99,7 +99,7 @@ same for the protocols.
   accept-string
   (inflight-input nil))
 
-(defvar websocket-version "1.2"
+(defvar websocket-version "1.3"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
@@ -556,9 +556,7 @@ connecting or open."
                     (make-websocket-frame :opcode 'close
                                           :completep t))
     (setf (websocket-ready-state websocket) 'closed))
-  (let ((buf (process-buffer (websocket-conn websocket))))
-    (delete-process (websocket-conn websocket))
-    (kill-buffer buf)))
+  (delete-process (websocket-conn websocket)))
 
 (defun websocket-ensure-connected (websocket)
   "If the WEBSOCKET connection is closed, open it."
@@ -650,7 +648,6 @@ describing the problem with the frame.
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
          (key (websocket-genkey))
-         (buf-name (format " *%s*" name))
          (coding-system-for-read 'binary)
          (coding-system-for-write 'binary)
          (conn (if (member (url-type url-struct) '("ws" "wss"))
@@ -659,13 +656,12 @@ describing the problem with the frame.
                           (port (if (= 0 (url-port url-struct))
                                     (if (eq type 'tls) 443 80)
                                   (url-port url-struct)))
-                          (host (url-host url-struct))
-                          (buf (get-buffer-create buf-name)))
+                          (host (url-host url-struct)))
                        (if (eq type 'plain)
-                           (make-network-process :name name :buffer buf :host host
+                           (make-network-process :name name :buffer nil :host host
                                                  :service port :nowait nil)
                          (condition-case-unless-debug nil
-                             (open-network-stream name buf host port :type type :nowait nil)
+                             (open-network-stream name nil host port :type type :nowait nil)
                            (wrong-number-of-arguments
                             (signal 'websocket-wss-needs-emacs-24 "wss")))))
                  (signal 'websocket-unsupported-protocol (url-type url-struct))))
@@ -680,6 +676,7 @@ describing the problem with the frame.
                      :extensions (mapcar 'car extensions)
                      :accept-string
                      (websocket-calculate-accept key))))
+    (unless conn (error "Could not establish the websocket connection to %s" url))
     (process-put conn :websocket websocket)
     (set-process-filter conn
                         (lambda (process output)
@@ -797,9 +794,10 @@ in the websocket client function `websocket-open'.  Returns the
 connection, which should be kept in order to pass to
 `websocket-server-close'."
   (let* ((conn (make-network-process
-                :name (format "websocket server on port %d" port)
+                :name (format "websocket server on port %s" port)
                 :server t
                 :family 'ipv4
+                :filter 'websocket-server-filter
                 :log 'websocket-server-accept
                 :filter-multibyte nil
                 :plist plist
@@ -840,10 +838,8 @@ connection, which should be kept in order to pass to
              :extensions (mapcar 'car (process-get server :extensions)))))
     (unless (member ws websocket-server-websockets)
       (push ws websocket-server-websockets))
-    (set-process-coding-system client 'unix 'unix)
     (process-put client :websocket ws)
-    (set-process-filter client 'websocket-server-filter)
-    (set-process-coding-system client 'binary)
+    (set-process-coding-system client 'binary 'binary)
     (set-process-sentinel client
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
@@ -860,7 +856,6 @@ These are defined as in `websocket-open'."
                   "Upgrade: websocket\r\n"
                   "Connection: Upgrade\r\n"
                   "Sec-WebSocket-Key: %s\r\n"
-                  "Origin: %s\r\n"
                   "Sec-WebSocket-Version: 13\r\n"
                   (when protocol
                     (concat
@@ -880,7 +875,6 @@ These are defined as in `websocket-open'."
                   "\r\n")
           (url-host (url-generic-parse-url url))
           key
-          system-name
           protocol))
 
 (defun websocket-get-server-response (websocket client-protocols client-extensions)
