@@ -99,7 +99,7 @@ same for the protocols.
   accept-string
   (inflight-input nil))
 
-(defvar websocket-version "1.1"
+(defvar websocket-version "1.3"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
