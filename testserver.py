@@ -8,8 +8,11 @@ from tornado import websocket
 
 class EchoWebSocket(websocket.WebSocketHandler):
 
+
     def open(self):
         logging.info("OPEN")
+        self.ping_callback = ioloop.PeriodicCallback(self.send_ping, 5000)
+        self.ping_callback.start()
 
     def on_message(self, message):
         logging.info(u"ON_MESSAGE: {0}".format(message))
@@ -21,6 +24,12 @@ class EchoWebSocket(websocket.WebSocketHandler):
     def allow_draft76(self):
         return False
 
+    def send_ping(self):
+        logging.info(u"PING!")
+        self.ping(b'')
+
+    def on_pong(self, data):
+        logging.info("PONG: {0}".format(data))
 
 if __name__ == "__main__":
     import tornado.options

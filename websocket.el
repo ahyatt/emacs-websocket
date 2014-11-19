@@ -708,28 +708,31 @@ describing the problem with the frame.
 This will parse headers and process frames repeatedly until there
 is no more output or the connection closes.  If the websocket
 connection is invalid, the connection will be closed."
-  (websocket-debug websocket "Received: %s" output)
-  (let ((start-point)
-        (text (concat (websocket-inflight-input websocket) output))
-        (header-end-pos))
-    (setf (websocket-inflight-input websocket) nil)
-    ;; If we've received the complete header, check to see if we've
-    ;; received the desired handshake.
-    (when (and (eq 'connecting (websocket-ready-state websocket))
-               (setq header-end-pos (string-match "\r\n\r\n" text))
-               (setq start-point (+ 4 header-end-pos)))
-      (condition-case err
-          (progn
-            (websocket-verify-response-code text)
-            (websocket-verify-headers websocket text))
-        (error
-         (websocket-close websocket)
-         (signal (car err) (cdr err))))
-      (setf (websocket-ready-state websocket) 'open)
-      (websocket-try-callback 'websocket-on-open 'on-open websocket))
-    (when (eq 'open (websocket-ready-state websocket))
-      (websocket-process-input-on-open-ws
-       websocket (substring text (or start-point 0))))))
+  (websocket-debug websocket "Received: %s/%S" output (websocket-get-opcode output))
+  (if (eq opcode 'ping)
+      (websocket-send lex-ws
+                      (make-websocket-frame :opcode 'pong :completep t))
+    (let ((start-point)
+          (text (concat (websocket-inflight-input websocket) output))
+          (header-end-pos))
+      (setf (websocket-inflight-input websocket) nil)
+      ;; If we've received the complete header, check to see if we've
+      ;; received the desired handshake.
+      (when (and (eq 'connecting (websocket-ready-state websocket))
+                 (setq header-end-pos (string-match "\r\n\r\n" text))
+                 (setq start-point (+ 4 header-end-pos)))
+        (condition-case err
+            (progn
+              (websocket-verify-response-code text)
+              (websocket-verify-headers websocket text))
+          (error
+           (websocket-close websocket)
+           (signal (car err) (cdr err))))
+        (setf (websocket-ready-state websocket) 'open)
+        (websocket-try-callback 'websocket-on-open 'on-open websocket))
+      (when (eq 'open (websocket-ready-state websocket))
+        (websocket-process-input-on-open-ws
+         websocket (substring text (or start-point 0)))))))
 
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
