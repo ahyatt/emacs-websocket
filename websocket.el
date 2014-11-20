@@ -1,3 +1,4 @@
+
 ;;; websocket.el --- Emacs WebSocket client and server
 
 ;; Copyright (c) 2013  Free Software Foundation, Inc.
@@ -296,7 +297,7 @@ We mask the frame or not, depending on SHOULD-MASK."
   (let* ((opcode (websocket-frame-opcode frame))
          (payload (websocket-frame-payload frame))
          (fin (websocket-frame-completep frame))
-         (payloadp (memq opcode '(continuation text binary)))
+         (payloadp (memq opcode '(continuation text binary pong)))
          (mask-key (when should-mask (websocket-genbytes 4))))
     (apply 'unibyte-string
            (append (list
@@ -334,7 +335,9 @@ the frame finishes.  If the frame is not completed, return NIL."
     (websocket-ensure-length s 1)
     (let* ((opcode (websocket-get-opcode s))
            (fin (logand 128 (websocket-get-bytes s 1)))
-           (payloadp (memq opcode '(continuation text binary)))
+           ;; Per RFC, ping can have a payload, we just tend to
+           ;; ignore it by practice.
+           (payloadp (memq opcode '(continuation text binary ping)))
            (payload-len (when payloadp
                           (websocket-get-payload-len (substring s 1))))
            (maskp (and
@@ -468,6 +471,7 @@ passed to the filter slot of WEBSOCKET.  If the frame is a ping,
 the lambda has a reply with a pong.  If the frame is a close, the lambda
 has connection termination."
   (let ((opcode (websocket-frame-opcode frame)))
+    (websocket-debug websocket "Processing frame with opcode %S." opcode)
     (lexical-let ((lex-ws websocket)
                   (lex-frame frame))
       (cond ((memq opcode '(continuation text binary))
@@ -475,7 +479,9 @@ has connection termination."
                                            lex-ws lex-frame)))
             ((eq opcode 'ping)
              (lambda () (websocket-send lex-ws
-                                   (make-websocket-frame :opcode 'pong :completep t))))
+                                        (make-websocket-frame :opcode 'pong
+                                                              :payload (websocket-frame-payload lex-frame)
+                                                              :completep t))))
             ((eq opcode 'close)
              (lambda () (delete-process (websocket-conn lex-ws))))
             (t (lambda ()))))))
@@ -507,7 +513,7 @@ has connection termination."
 (defun websocket-check (frame)
   "Check FRAME for correctness, returning true if correct."
   (and (equal (not (memq (websocket-frame-opcode frame)
-                         '(continuation text binary)))
+                         '(continuation text binary pong)))
               (and (not (websocket-frame-payload frame))
                    (websocket-frame-completep frame)))))
 
@@ -709,30 +715,27 @@ This will parse headers and process frames repeatedly until there
 is no more output or the connection closes.  If the websocket
 connection is invalid, the connection will be closed."
   (websocket-debug websocket "Received: %s/%S" output (websocket-get-opcode output))
-  (if (eq opcode 'ping)
-      (websocket-send lex-ws
-                      (make-websocket-frame :opcode 'pong :completep t))
-    (let ((start-point)
-          (text (concat (websocket-inflight-input websocket) output))
-          (header-end-pos))
-      (setf (websocket-inflight-input websocket) nil)
-      ;; If we've received the complete header, check to see if we've
-      ;; received the desired handshake.
-      (when (and (eq 'connecting (websocket-ready-state websocket))
-                 (setq header-end-pos (string-match "\r\n\r\n" text))
-                 (setq start-point (+ 4 header-end-pos)))
-        (condition-case err
-            (progn
-              (websocket-verify-response-code text)
-              (websocket-verify-headers websocket text))
-          (error
-           (websocket-close websocket)
-           (signal (car err) (cdr err))))
-        (setf (websocket-ready-state websocket) 'open)
-        (websocket-try-callback 'websocket-on-open 'on-open websocket))
-      (when (eq 'open (websocket-ready-state websocket))
-        (websocket-process-input-on-open-ws
-         websocket (substring text (or start-point 0)))))))
+  (let ((start-point)
+        (text (concat (websocket-inflight-input websocket) output))
+        (header-end-pos))
+    (setf (websocket-inflight-input websocket) nil)
+    ;; If we've received the complete header, check to see if we've
+    ;; received the desired handshake.
+    (when (and (eq 'connecting (websocket-ready-state websocket))
+               (setq header-end-pos (string-match "\r\n\r\n" text))
+               (setq start-point (+ 4 header-end-pos)))
+      (condition-case err
+          (progn
+            (websocket-verify-response-code text)
+            (websocket-verify-headers websocket text))
+        (error
+         (websocket-close websocket)
+         (signal (car err) (cdr err))))
+      (setf (websocket-ready-state websocket) 'open)
+      (websocket-try-callback 'websocket-on-open 'on-open websocket))
+    (when (eq 'open (websocket-ready-state websocket))
+      (websocket-process-input-on-open-ws
+       websocket (substring text (or start-point 0))))))
 
 (defun websocket-verify-headers (websocket output)
   "Based on WEBSOCKET's data, ensure the headers in OUTPUT are valid.
