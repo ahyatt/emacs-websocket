@@ -296,35 +296,40 @@ We mask the frame or not, depending on SHOULD-MASK."
   (let* ((opcode (websocket-frame-opcode frame))
          (payload (websocket-frame-payload frame))
          (fin (websocket-frame-completep frame))
-         (payloadp (memq opcode '(continuation text binary)))
+         (payloadp (and payload
+                        (memq opcode '(continuation ping pong text binary))))
          (mask-key (when should-mask (websocket-genbytes 4))))
     (apply 'unibyte-string
-           (append (list
-                    (logior (cond ((eq opcode 'continuation) 0)
-                                  ((eq opcode 'text) 1)
-                                  ((eq opcode 'binary) 2)
-                                  ((eq opcode 'close) 8)
-                                  ((eq opcode 'ping) 9)
-                                  ((eq opcode 'pong) 10))
-                            (if fin 128 0)))
-                   (when payloadp
-                     (list
-                      (logior
-                       (if should-mask 128 0)
-                       (cond ((< (length payload) 126) (length payload))
-                             ((< (length payload) 65536) 126)
-                             (t 127)))))
-                   (when (and payloadp (>= (length payload) 126))
-                     (append (websocket-to-bytes (length payload)
-                                          (cond ((< (length payload) 126) 1)
-                                                ((< (length payload) 65536) 2)
-                                                (t 8))) nil))
-                   (when (and payloadp should-mask)
-                     (append mask-key nil))
-                   (when payloadp
-                     (append (if should-mask (websocket-mask mask-key payload)
-                               payload)
-                             nil))))))
+           (let ((val (append (list
+                            (logior (cond ((eq opcode 'continuation) 0)
+                                          ((eq opcode 'text) 1)
+                                          ((eq opcode 'binary) 2)
+                                          ((eq opcode 'close) 8)
+                                          ((eq opcode 'ping) 9)
+                                          ((eq opcode 'pong) 10))
+                                    (if fin 128 0)))
+                           (when payloadp
+                             (list
+                              (logior
+                               (if should-mask 128 0)
+                               (cond ((< (length payload) 126) (length payload))
+                                     ((< (length payload) 65536) 126)
+                                     (t 127)))))
+                           (when (and payloadp (>= (length payload) 126))
+                             (append (websocket-to-bytes
+                                      (length payload)
+                                      (cond ((< (length payload) 126) 1)
+                                            ((< (length payload) 65536) 2)
+                                            (t 8))) nil))
+                           (when (and payloadp should-mask)
+                             (append mask-key nil))
+                           (when payloadp
+                             (append (if should-mask (websocket-mask mask-key payload)
+                                       payload)
+                                     nil)))))
+             ;; We have to make sure the non-payload data is a full 32-bit frame
+             (if (= 1 (length val))
+                 (append val '(0)) val)))))
 
 (defun websocket-read-frame (s)
   "Read from string S a `websocket-frame' struct with the contents.
@@ -334,7 +339,7 @@ the frame finishes.  If the frame is not completed, return NIL."
     (websocket-ensure-length s 1)
     (let* ((opcode (websocket-get-opcode s))
            (fin (logand 128 (websocket-get-bytes s 1)))
-           (payloadp (memq opcode '(continuation text binary)))
+           (payloadp (memq opcode '(continuation text binary ping pong)))
            (payload-len (when payloadp
                           (websocket-get-payload-len (substring s 1))))
            (maskp (and
@@ -475,7 +480,10 @@ has connection termination."
                                            lex-ws lex-frame)))
             ((eq opcode 'ping)
              (lambda () (websocket-send lex-ws
-                                   (make-websocket-frame :opcode 'pong :completep t))))
+                                        (make-websocket-frame
+                                         :opcode 'pong
+                                         :payload (websocket-frame-payload lex-frame)
+                                         :completep t))))
             ((eq opcode 'close)
              (lambda () (delete-process (websocket-conn lex-ws))))
             (t (lambda ()))))))
@@ -506,10 +514,16 @@ has connection termination."
 
 (defun websocket-check (frame)
   "Check FRAME for correctness, returning true if correct."
-  (and (equal (not (memq (websocket-frame-opcode frame)
-                         '(continuation text binary)))
-              (and (not (websocket-frame-payload frame))
-                   (websocket-frame-completep frame)))))
+  (or
+   ;; Text, binary, and continuation frames need payloads
+   (and (memq (websocket-frame-opcode frame) '(text binary continuation))
+        (websocket-frame-payload frame))
+   ;; Pings and pongs may optionally have them
+   (memq (websocket-frame-opcode frame) '(ping pong))
+   ;; And close shouldn't have any payload, and should always be complete.
+   (and (eq (websocket-frame-opcode frame) 'close)
+        (not (websocket-frame-payload frame))
+        (websocket-frame-completep frame))))
 
 (defun websocket-send (websocket frame)
   "To the WEBSOCKET server, send the FRAME.

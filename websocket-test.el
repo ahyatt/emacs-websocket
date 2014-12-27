@@ -236,10 +236,11 @@
     (setq sent nil)
     (flet ((websocket-send (websocket content) (setq sent content)))
       (should (equal
-               (make-websocket-frame :opcode 'pong :completep t)
+               (make-websocket-frame :opcode 'pong :payload "data" :completep t)
                (progn
                  (funcall (websocket-process-frame websocket
-                                           (make-websocket-frame :opcode 'ping)))
+                                                   (make-websocket-frame :opcode 'ping
+                                                                         :payload "data")))
                  sent))))
     (flet ((delete-process (conn) (setq deleted t)))
       (should (progn
@@ -303,13 +304,42 @@
      (websocket-encode-frame (make-websocket-frame :opcode 'text
                                                    :payload "Hello"
                                                    :completep nil) t))))
-  (dolist (opcode '(close ping pong))
-    (should (equal
-             opcode
-             (websocket-frame-opcode
-              (websocket-read-frame
-               (websocket-encode-frame (make-websocket-frame :opcode opcode
-                                                             :completep t) t)))))))
+  (should (equal 'close (websocket-frame-opcode
+                         (websocket-read-frame
+                           (websocket-encode-frame
+                            (make-websocket-frame :opcode 'close :completep t) t)))))
+  (dolist (opcode '(ping pong))
+    (let ((read-frame (websocket-read-frame
+                        (websocket-encode-frame
+                         (make-websocket-frame :opcode opcode
+                                               :payload "data"
+                                               :completep t) t))))
+      (should read-frame)
+      (should (equal
+               opcode
+               (websocket-frame-opcode read-frame)))
+      (should (equal
+               "data" (websocket-frame-payload read-frame)))))
+  ;; A frame should be four bytes, even for no-data pings.
+  (should (equal 2 (websocket-frame-length
+                    (websocket-read-frame
+                     (websocket-encode-frame 
+                      (make-websocket-frame :opcode 'ping :completep t) t))))))
+
+(ert-deftest websocket-check ()
+  (should (websocket-check (make-websocket-frame :opcode 'close :completep t)))
+  (should-not
+   (websocket-check (make-websocket-frame :opcode 'close :completep nil)))
+  (should-not
+   (websocket-check (make-websocket-frame :opcode 'close :completep t :payload "")))
+  (should (websocket-check (make-websocket-frame :opcode 'text :completep nil
+                                                 :payload "incompl")))
+  (should (websocket-check (make-websocket-frame :opcode 'ping :completep t)))
+  (should (websocket-check (make-websocket-frame :opcode 'ping :completep t
+                                                 :payload "")))
+  (should (websocket-check (make-websocket-frame :opcode 'pong :completep t
+                                                 :payload "")))
+  (should-not (websocket-check (make-websocket-frame :opcode 'text))))
 
 (ert-deftest websocket-close ()
   (let ((sent-frames)
