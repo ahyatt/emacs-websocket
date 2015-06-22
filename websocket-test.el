@@ -211,7 +211,11 @@
              (websocket-create-headers "ws://www.example.com/path"
                                        "key" nil
                                        '(("ext1" . ("a" "b=2"))
-                                         ("ext2")))))))
+                                         ("ext2"))))))
+  (should
+   (string-match
+    "Host: www.example.com:123\r\n"
+    (websocket-create-headers "ws://www.example.com:123/path" "key" nil nil))))
 
 (ert-deftest websocket-process-frame ()
   (let* ((sent)
@@ -323,7 +327,7 @@
   ;; A frame should be four bytes, even for no-data pings.
   (should (equal 2 (websocket-frame-length
                     (websocket-read-frame
-                     (websocket-encode-frame 
+                     (websocket-encode-frame
                       (make-websocket-frame :opcode 'ping :completep t) t))))))
 
 (ert-deftest websocket-check ()
