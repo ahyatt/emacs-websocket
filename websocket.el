@@ -45,6 +45,7 @@
 
 (require 'bindat)
 (require 'url-parse)
+(require 'url-cookie)
 (eval-when-compile (require 'cl))
 
 ;;; Code:
@@ -611,6 +612,11 @@ The parameter strings are of the form \"key=value\" or \"value\".
 EXTENSIONS can be NIL if none are in use.  An example value would
 be '(\"deflate-stream\" . (\"mux\" \"max-channels=4\")).
 
+Cookies that are set via `url-cookie-store' will be used during
+communication with the server, and cookies received from the
+server will be stored in the same cookie storage that the
+`url-cookie' package uses.
+
 Optionally you can specify
 ON-OPEN, ON-MESSAGE and ON-CLOSE callbacks as well.
 
@@ -721,6 +727,14 @@ describing the problem with the frame.
     (websocket-debug websocket "Websocket opened")
     websocket))
 
+(defun websocket-process-headers (url headers)
+  "On opening URL, process the HEADERS sent from the server."
+  (when (string-match "Set-Cookie: \(.*\)\r\n" headers)
+    ;; The url-current-object is assumed to be set by
+    ;; url-cookie-handle-set-cookie.
+    (let ((url-current-object (url-generic-parse-url url)))
+      (url-cookie-handle-set-cookie (match-string 1 headers)))))
+
 (defun websocket-outer-filter (websocket output)
   "Filter the WEBSOCKET server's OUTPUT.
 This will parse headers and process frames repeatedly until there
@@ -739,7 +753,8 @@ connection is invalid, the connection will be closed."
       (condition-case err
           (progn
             (websocket-verify-response-code text)
-            (websocket-verify-headers websocket text))
+            (websocket-verify-headers websocket text)
+            (websocket-process-headers (websocket-url websocket) text))
         (error
          (websocket-close websocket)
          (signal (car err) (cdr err))))
@@ -870,7 +885,13 @@ connection, which should be kept in order to pass to
 (defun websocket-create-headers (url key protocol extensions)
   "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
 These are defined as in `websocket-open'."
-  (let ((parsed-url (url-generic-parse-url url)))
+  (let* ((parsed-url (url-generic-parse-url url))
+         (host-port (if (url-port-if-non-default parsed-url)
+                        (format "%s:%s" (url-host parsed-url) (url-port parsed-url))
+                      (url-host parsed-url)))
+         (cookie-header (url-cookie-generate-header-lines
+                         host-port (car (url-path-and-query parsed-url))
+                         (equal (url-type parsed-url) "wss"))))
     (format (concat "Host: %s\r\n"
                     "Upgrade: websocket\r\n"
                     "Connection: Upgrade\r\n"
@@ -893,10 +914,9 @@ These are defined as in `websocket-open'."
                                   (when (cdr ext)
                                     (mapconcat 'identity (cdr ext) "; "))))
                                extensions ", ")))
+                    (when cookie-header cookie-header)
                     "\r\n")
-            (if (url-port-if-non-default parsed-url)
-                (format "%s:%s" (url-host parsed-url) (url-port parsed-url))
-              (url-host parsed-url))
+            host-port
             key
             protocol)))
 

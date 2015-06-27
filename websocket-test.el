@@ -198,24 +198,59 @@
                               "Connection: Upgrade\r\n"
                               "Sec-WebSocket-Key: key\r\n"
                               "Sec-WebSocket-Version: 13\r\n")))
-    (should (equal (concat base-headers "\r\n")
-                   (websocket-create-headers "ws://www.example.com/path"
-                                             "key" nil nil)))
-    (should (equal (concat base-headers
-                           "Sec-WebSocket-Protocol: protocol\r\n\r\n")
-                   (websocket-create-headers "ws://www.example.com/path"
-                                             "key" '("protocol") nil)))
-    (should (equal
-             (concat base-headers
-                     "Sec-WebSocket-Extensions: ext1; a; b=2, ext2\r\n\r\n")
-             (websocket-create-headers "ws://www.example.com/path"
-                                       "key" nil
-                                       '(("ext1" . ("a" "b=2"))
-                                         ("ext2"))))))
-  (should
-   (string-match
-    "Host: www.example.com:123\r\n"
-    (websocket-create-headers "ws://www.example.com:123/path" "key" nil nil))))
+    (flet ((url-cookie-generate-header-lines
+            (host localpart secure) ""))
+      (should (equal (concat base-headers "\r\n")
+                     (websocket-create-headers "ws://www.example.com/path"
+                                               "key" nil nil)))
+      (should (equal (concat base-headers
+                             "Sec-WebSocket-Protocol: protocol\r\n\r\n")
+                     (websocket-create-headers "ws://www.example.com/path"
+                                               "key" '("protocol") nil)))
+      (should (equal
+               (concat base-headers
+                       "Sec-WebSocket-Extensions: ext1; a; b=2, ext2\r\n\r\n")
+               (websocket-create-headers "ws://www.example.com/path"
+                                         "key" nil
+                                         '(("ext1" . ("a" "b=2"))
+                                           ("ext2"))))))
+    (flet ((url-cookie-generate-header-lines
+            (host localpart secure)
+            (should (equal host "www.example.com:123"))
+            (should (equal localpart "/path"))
+            (should secure)
+            "Cookie: foo=bar\r\n"))
+      (should (equal (websocket-create-headers "wss://www.example.com:123/path"
+                                               "key" nil nil)
+                     (concat
+                      "Host: www.example.com:123\r\n"
+                      "Upgrade: websocket\r\n"
+                      "Connection: Upgrade\r\n"
+                      "Sec-WebSocket-Key: key\r\n"
+                      "Sec-WebSocket-Version: 13\r\n"
+                      "Cookie: foo=bar\r\n\r\n"))))
+    (should
+     (string-match
+      "Host: www.example.com:123\r\n"
+      (websocket-create-headers "ws://www.example.com:123/path" "key" nil nil)))))
+
+(ert-deftest websocket-process-headers ()
+  (flet ((url-cookie-handle-set-cookie
+          (text)
+          (should (equal text "foo=bar;"))
+          ;; test that we have set the implicit buffer variable needed
+          ;; by url-cookie-handle-set-cookie
+          (should (equal url-current-object
+                         (url-generic-parse-url "ws://example.com/path")))))
+    (websocket-process-headers "ws://example.com/path"
+                               (concat
+                                "HTTP/1.1 101 Switching Protocols\r\n"
+                                "Upgrade: websocket\r\n"
+                                "Connection: Upgrade\r\n"
+                                "Set-Cookie: foo=bar;\r\n\r\n")))
+  (flet ((url-cookie-handle-set-cookie (text) (should nil)))
+    (websocket-process-headers "ws://example.com/path"
+                               "HTTP/1.1 101 Switching Protocols\r\n")))
 
 (ert-deftest websocket-process-frame ()
   (let* ((sent)
