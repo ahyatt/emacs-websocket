@@ -451,10 +451,11 @@ ERR should be a cons of error symbol and error data."
 The only acceptable one to websocket is responce code 101.
 A t value will be returned on success, and an error thrown
 if not."
-  (unless (and (string-match "HTTP/1.1 \\([[:digit:]]+\\)" output)
-               (equal "101" (match-string 1 output)))
-       (signal 'websocket-received-error-http-response
-               (string-to-number (match-string 1 output))))
+  (unless (string-match "^HTTP/1.1 \\([[:digit:]]+\\)" output)
+    (signal 'websocket-invalid-header "Invalid HTTP status line"))
+  (unless (equal "101" (match-string 1 output))
+    (signal 'websocket-received-error-http-response
+	    (string-to-number (match-string 1 output))))
   t)
 
 (defun websocket-parse-repeated-field (output field)
@@ -750,17 +751,17 @@ connection is invalid, the connection will be closed."
     (when (and (eq 'connecting (websocket-ready-state websocket)))
       (if (and (setq header-end-pos (string-match "\r\n\r\n" text))
                (setq start-point (+ 4 header-end-pos)))
-	(progn
-	  (condition-case err
-	      (progn
-		(websocket-verify-response-code text)
-		(websocket-verify-headers websocket text)
-		(websocket-process-headers (websocket-url websocket) text))
-	    (error
-	     (websocket-close websocket)
-	     (signal (car err) (cdr err))))
-	  (setf (websocket-ready-state websocket) 'open)
-	  (websocket-try-callback 'websocket-on-open 'on-open websocket))
+	  (progn
+	    (condition-case err
+		(progn
+		  (websocket-verify-response-code text)
+		  (websocket-verify-headers websocket text)
+		  (websocket-process-headers (websocket-url websocket) text))
+	      (error
+	       (websocket-close websocket)
+	       (signal (car err) (cdr err))))
+	    (setf (websocket-ready-state websocket) 'open)
+	    (websocket-try-callback 'websocket-on-open 'on-open websocket))
 	(setf (websocket-inflight-input websocket) text)))
     (when (eq 'open (websocket-ready-state websocket))
       (websocket-process-input-on-open-ws
