@@ -820,6 +820,11 @@ of populating the list of server extensions to WEBSOCKET."
 
 (defun* websocket-server (port &rest plist)
   "Open a websocket server on PORT.
+If the plist contains a `:host' HOST pair, this value will be
+used to configure the addresses the socket listens on. The symbol
+`local' specifies the local host. If unspecified or nil, the
+socket will listen on all addresses.
+
 This also takes a plist of callbacks: `:on-open', `:on-message',
 `:on-close' and `:on-error', which operate exactly as documented
 in the websocket client function `websocket-open'.  Returns the
@@ -833,6 +838,7 @@ connection, which should be kept in order to pass to
                 :log 'websocket-server-accept
                 :filter-multibyte nil
                 :plist plist
+                :host (plist-get plist :host)
                 :service port)))
     conn))
 
