@@ -79,7 +79,10 @@
 (websocket-close wstest-ws)
 (assert (null (websocket-openp wstest-ws)))
 
-(stop-process wstest-server-proc)
+(if (not (eq system-type 'windows-nt))
+    ; Windows doesn't have support for the SIGSTP signal, so we'll just kill
+    ; the process.
+    (stop-process wstest-server-proc))
 (kill-process wstest-server-proc)
 
 ;; Make sure the processes are closed.  This happens asynchronously,
