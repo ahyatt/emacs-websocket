@@ -29,6 +29,6 @@ if __name__ == "__main__":
         (r"/", EchoWebSocket),
     ])
     server = httpserver.HTTPServer(application)
-    server.listen(9999)
+    server.listen(9999, "127.0.0.1")
     logging.info("STARTED: Server start listening")
     ioloop.IOLoop.instance().start()
