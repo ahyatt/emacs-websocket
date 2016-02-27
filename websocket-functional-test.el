@@ -126,6 +126,7 @@
 (setq wstest-closed nil)
 (setq server-conn (websocket-server
                    9998
+                   :host 'local
                    :on-message (lambda (ws frame)
                                  (message "Server received text!")
                                  (websocket-send-text ws
