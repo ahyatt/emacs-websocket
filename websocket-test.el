@@ -114,7 +114,9 @@
    (eq 400 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 400")
                           :type 'websocket-received-error-http-response))))
   (should
-   (eq 200 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 200"))))))
+   (eq 200 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 200")))))
+  (should-error (websocket-verify-response-code "HTTP/1.")
+                :type 'websocket-invalid-header))
 
 (ert-deftest websocket-verify-headers ()
   (let ((accept "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
@@ -420,8 +422,9 @@
             (websocket frame)
             (lexical-let ((frame frame))
               (lambda () (push frame processed-frames))))
-           (websocket-verify-response-code (output) t)
-           (websocket-verify-headers (websocket output) t))
+           (websocket-verify-headers (websocket output) t)
+           (websocket-close (websocket)))
+      (websocket-outer-filter fake-ws "HTTP/1.1 101 Switching Protocols\r\n")
       (websocket-outer-filter fake-ws "Sec-")
       (should (eq (websocket-ready-state fake-ws) 'connecting))
       (should-not open-callback-called)
