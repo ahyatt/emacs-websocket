@@ -460,6 +460,21 @@
          (should-not on-open-calledp)
          (should websocket-closed-calledp))))))
 
+(ert-deftest websocket-outer-filter-fragmented-header ()
+  (let* ((on-open-calledp)
+         (websocket-closed-calledp)
+         (fake-ws (websocket-inner-create
+                   :protocols '("websocket")
+                   :conn t :url t :accept-string "17hG/VoPPd14L9xPSI7LtEr7PQc="
+                   :on-open (lambda (websocket)
+                              (setq on-open-calledp t)))))
+    (flet ((websocket-close (websocket)))
+      (websocket-outer-filter fake-ws "HTTP/1.1 101 Web Socket Protocol Handsh")
+      (websocket-outer-filter fake-ws "ake\r\nConnection: Upgrade\r\n")
+      (websocket-outer-filter fake-ws "Upgrade: websocket\r\n")
+      (websocket-outer-filter fake-ws "Sec-websocket-Protocol: websocket\r\n")
+      (websocket-outer-filter fake-ws "Sec-WebSocket-Accept: 17hG/VoPPd14L9xPSI7LtEr7PQc=\r\n\r\n"))))
+
 (ert-deftest websocket-send-text ()
   (flet ((websocket-send (ws frame)
                          (should (equal
