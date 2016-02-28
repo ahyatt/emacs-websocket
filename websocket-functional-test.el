@@ -96,6 +96,8 @@
 
 (when (>= (string-to-int (substring emacs-version 0 2)) 24)
   (message "Testing with wss://echo.websocket.org")
+  (when (eq system-type 'windows-nt)
+    (message "Windows users must have gnutls DLLs in the emacs bin directory."))
   (setq wstest-ws
         (websocket-open
          "wss://echo.websocket.org"
