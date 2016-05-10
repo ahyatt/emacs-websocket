@@ -1,6 +1,6 @@
 ;;; websocket-functional-test.el --- Simple functional testing
 
-;; Copyright (c) 2013  Free Software Foundation, Inc.
+;; Copyright (c) 2013, 2016  Free Software Foundation, Inc.
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -51,11 +51,11 @@
 (defvar wstest-ws
   (websocket-open
    "ws://127.0.0.1:9999"
-   :on-message (lambda (websocket frame)
+   :on-message (lambda (_websocket frame)
                  (push (websocket-frame-payload frame) wstest-msgs)
                  (message "ws frame: %S" (websocket-frame-payload frame))
                  (error "Test error (expected)"))
-   :on-close (lambda (websocket) (setq wstest-closed t))))
+   :on-close (lambda (_websocket) (setq wstest-closed t))))
 
 (defun wstest-pop-to-debug ()
   "Open websocket log buffer. Not used in testing. Just for debugging."
@@ -71,7 +71,7 @@
 
 (sleep-for 0.1)
 (assert (equal (car wstest-msgs) "You said: Hi!"))
-(setf (websocket-on-error wstest-ws) (lambda (ws type err)))
+(setf (websocket-on-error wstest-ws) (lambda (_ws _type _err)))
 (websocket-send-text wstest-ws "Hi after error!")
 (sleep-for 0.1)
 (assert (equal (car wstest-msgs) "You said: Hi after error!"))
@@ -94,19 +94,19 @@
 ;; Remote server test, with wss ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(when (>= (string-to-int (substring emacs-version 0 2)) 24)
+(when (>= (string-to-number (substring emacs-version 0 2)) 24)
   (message "Testing with wss://echo.websocket.org")
   (when (eq system-type 'windows-nt)
     (message "Windows users must have gnutls DLLs in the emacs bin directory."))
   (setq wstest-ws
         (websocket-open
          "wss://echo.websocket.org"
-         :on-open (lambda (websocket)
+         :on-open (lambda (_websocket)
                     (message "Websocket opened"))
-         :on-message (lambda (websocket frame)
+         :on-message (lambda (_websocket frame)
                        (push (websocket-frame-payload frame) wstest-msgs)
                        (message "ws frame: %S" (websocket-frame-payload frame)))
-         :on-close (lambda (websocket)
+         :on-close (lambda (_websocket)
                      (message "Websocket closed")
                      (setq wstest-closed t)))
         wstest-msgs nil)
@@ -126,30 +126,30 @@
 (message "Testing with emacs websocket server.")
 (message "If this does not pass, make sure your firewall allows the connection.")
 (setq wstest-closed nil)
-(setq server-conn (websocket-server
-                   9998
-                   :host 'local
-                   :on-message (lambda (ws frame)
-                                 (message "Server received text!")
-                                 (websocket-send-text ws
-                                  (websocket-frame-payload frame)))
-                   :on-open (lambda (websocket) "Client connection opened!")
-                   :on-close (lambda (websocket)
-                               (setq wstest-closed t))))
+(let ((server-conn (websocket-server
+                    9998
+                    :host 'local
+                    :on-message (lambda (ws frame)
+                                  (message "Server received text!")
+                                  (websocket-send-text ws
+                                                       (websocket-frame-payload frame)))
+                    :on-open (lambda (_websocket) "Client connection opened!")
+                    :on-close (lambda (_websocket)
+                                (setq wstest-closed t)))))
 
-(setq wstest-msgs nil
-      wstest-ws
-      (websocket-open
-       "ws://localhost:9998"
-       :on-message (lambda (websocket frame)
-                     (push (websocket-frame-payload frame) wstest-msgs)
-                     (message "ws frame: %S" (websocket-frame-payload frame)))))
+  (setq wstest-msgs nil
+        wstest-ws
+        (websocket-open
+         "ws://localhost:9998"
+         :on-message (lambda (_websocket frame)
+                       (push (websocket-frame-payload frame) wstest-msgs)
+                       (message "ws frame: %S" (websocket-frame-payload frame)))))
 
-(assert (websocket-openp wstest-ws))
-(websocket-send-text wstest-ws "Hi to self!")
-(sleep-for 0.3)
-(assert (equal (car wstest-msgs) "Hi to self!"))
-(websocket-server-close server-conn)
+  (assert (websocket-openp wstest-ws))
+  (websocket-send-text wstest-ws "Hi to self!")
+  (sleep-for 0.3)
+  (assert (equal (car wstest-msgs) "Hi to self!"))
+  (websocket-server-close server-conn))
 (assert wstest-closed)
 (websocket-close wstest-ws)
 

@@ -858,7 +858,7 @@ connection, which should be kept in order to pass to
       (setq websocket-server-websockets (remove ws websocket-server-websockets))))
   (delete-process conn))
 
-(defun websocket-server-accept (server client message)
+(defun websocket-server-accept (server client _message)
   "Accept a new websocket connection from a client."
   (let ((ws (websocket-inner-create
              :server-conn server
