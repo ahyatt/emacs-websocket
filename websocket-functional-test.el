@@ -79,7 +79,10 @@
 (websocket-close wstest-ws)
 (assert (null (websocket-openp wstest-ws)))
 
-(stop-process wstest-server-proc)
+(if (not (eq system-type 'windows-nt))
+    ; Windows doesn't have support for the SIGSTP signal, so we'll just kill
+    ; the process.
+    (stop-process wstest-server-proc))
 (kill-process wstest-server-proc)
 
 ;; Make sure the processes are closed.  This happens asynchronously,
@@ -93,6 +96,8 @@
 
 (when (>= (string-to-int (substring emacs-version 0 2)) 24)
   (message "Testing with wss://echo.websocket.org")
+  (when (eq system-type 'windows-nt)
+    (message "Windows users must have gnutls DLLs in the emacs bin directory."))
   (setq wstest-ws
         (websocket-open
          "wss://echo.websocket.org"
@@ -123,6 +128,7 @@
 (setq wstest-closed nil)
 (setq server-conn (websocket-server
                    9998
+                   :host 'local
                    :on-message (lambda (ws frame)
                                  (message "Server received text!")
                                  (websocket-send-text ws
