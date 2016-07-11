@@ -62,8 +62,8 @@ the additional helper APIs are not visible to the caller.
 
 A websocket struct is created with `websocket-open'.
 
-`ready-state' contains one of 'connecting, 'open, or
-'closed, depending on the state of the websocket.
+`ready-state' contains one of `connecting', `open', or
+`closed', depending on the state of the websocket.
 
 The W3C API \"bufferedAmount\" call is not currently implemented,
 since there is no elisp API to get the buffered amount from the
@@ -610,7 +610,7 @@ the car of which is a string naming the extension, and the cdr of
 which is the list of parameter strings to use for that extension.
 The parameter strings are of the form \"key=value\" or \"value\".
 EXTENSIONS can be NIL if none are in use.  An example value would
-be '(\"deflate-stream\" . (\"mux\" \"max-channels=4\")).
+be (\"deflate-stream\" . (\"mux\" \"max-channels=4\")).
 
 Cookies that are set via `url-cookie-store' will be used during
 communication with the server, and cookies received from the
@@ -640,7 +640,7 @@ or `on-close', and the error as the third argument. Do NOT
 rethrow the error, or else you may miss some websocket messages.
 You similarly must not generate any other errors in this method.
 If you want to debug errors, set
-`websocket-callback-debug-on-error' to `t', but this also can be
+`websocket-callback-debug-on-error' to t, but this also can be
 dangerous is the debugger is quit out of.  If not specified,
 `websocket-default-error-handler' is used.
 
