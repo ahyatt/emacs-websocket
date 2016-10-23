@@ -52,8 +52,8 @@
   (websocket-open
    "ws://127.0.0.1:9999"
    :on-message (lambda (_websocket frame)
-                 (push (websocket-frame-payload frame) wstest-msgs)
-                 (message "ws frame: %S" (websocket-frame-payload frame))
+                 (push (websocket-frame-text frame) wstest-msgs)
+                 (message "ws frame: %S" (websocket-frame-text frame))
                  (error "Test error (expected)"))
    :on-close (lambda (_websocket) (setq wstest-closed t))))
 
@@ -67,10 +67,10 @@
 
 (assert (null wstest-msgs))
 
-(websocket-send-text wstest-ws "Hi!")
+(websocket-send-text wstest-ws "你好")
 
 (sleep-for 0.1)
-(assert (equal (car wstest-msgs) "You said: Hi!"))
+(assert (equal (car wstest-msgs) "You said: 你好"))
 (setf (websocket-on-error wstest-ws) (lambda (_ws _type _err)))
 (websocket-send-text wstest-ws "Hi after error!")
 (sleep-for 0.1)
@@ -104,8 +104,8 @@
          :on-open (lambda (_websocket)
                     (message "Websocket opened"))
          :on-message (lambda (_websocket frame)
-                       (push (websocket-frame-payload frame) wstest-msgs)
-                       (message "ws frame: %S" (websocket-frame-payload frame)))
+                       (push (websocket-frame-text frame) wstest-msgs)
+                       (message "ws frame: %S" (websocket-frame-text frame)))
          :on-close (lambda (_websocket)
                      (message "Websocket closed")
                      (setq wstest-closed t)))
@@ -131,24 +131,24 @@
                     :host 'local
                     :on-message (lambda (ws frame)
                                   (message "Server received text!")
-                                  (websocket-send-text ws
-                                                       (websocket-frame-payload frame)))
+                                  (websocket-send-text
+                                   ws (websocket-frame-text frame)))
                     :on-open (lambda (_websocket) "Client connection opened!")
                     :on-close (lambda (_websocket)
                                 (setq wstest-closed t)))))
-
   (setq wstest-msgs nil
         wstest-ws
         (websocket-open
          "ws://localhost:9998"
          :on-message (lambda (_websocket frame)
-                       (push (websocket-frame-payload frame) wstest-msgs)
-                       (message "ws frame: %S" (websocket-frame-payload frame)))))
+                       (message "ws frame: %S" (websocket-frame-text frame))
+                       (push
+                        (websocket-frame-text frame) wstest-msgs))))
 
   (assert (websocket-openp wstest-ws))
-  (websocket-send-text wstest-ws "Hi to self!")
+  (websocket-send-text wstest-ws "你好")
   (sleep-for 0.3)
-  (assert (equal (car wstest-msgs) "Hi to self!"))
+  (assert (equal (car wstest-msgs) "你好"))
   (websocket-server-close server-conn))
 (assert wstest-closed)
 (websocket-close wstest-ws)

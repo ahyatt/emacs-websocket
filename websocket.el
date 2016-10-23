@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.6
+;; Version: 1.7
 ;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -279,14 +279,25 @@ many bytes were consumed from the string."
 
 (defstruct websocket-frame opcode payload length completep)
 
+(defun websocket-frame-text (frame)
+  "Given FRAME, return the payload as a utf-8 encoded string."
+  (assert (websocket-frame-p frame))
+  (decode-coding-string (websocket-frame-payload frame) 'utf-8))
+
 (defun websocket-mask (key data)
   "Using string KEY, mask string DATA according to the RFC.
 This is used to both mask and unmask data."
-  (apply
-   'string
-   (loop for b across data
-         for i from 0 to (length data)
-         collect (logxor (websocket-get-bytes (substring key (mod i 4)) 1) b))))
+  ;; If we don't make the string unibyte here, a string of bytes that should be
+  ;; interpreted as a unibyte string will instead be interpreted as a multibyte
+  ;; string of the same length (for example, 6 multibyte chars for 你好 instead
+  ;; of the correct 6 unibyte chars, which would convert into 2 multibyte
+  ;; chars).
+  (string-make-unibyte (apply
+                        'string
+                        (loop for b across data
+                              for i from 0 to (length data)
+                              collect
+                              (logxor (websocket-get-bytes (substring key (mod i 4)) 1) b)))))
 
 (defun websocket-ensure-length (s n)
   "Ensure the string S has at most N bytes.

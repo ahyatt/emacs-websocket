@@ -194,6 +194,9 @@
     (should (equal '("ext1" "ext2; a=1")
                    (websocket-negotiated-extensions ws-with-extensions)))))
 
+(ert-deftest websocket-mask-is-unibyte ()
+  (should-not (multibyte-string-p (websocket-mask "\344\275\240\345\245\275" "abcdef"))))
+
 (ert-deftest websocket-create-headers ()
   (let ((base-headers (concat "Host: www.example.com\r\n"
                               "Upgrade: websocket\r\n"
