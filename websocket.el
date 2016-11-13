@@ -848,6 +848,7 @@ connection, which should be kept in order to pass to
                 :name (format "websocket server on port %s" port)
                 :server t
                 :family 'ipv4
+                :noquery t
                 :filter 'websocket-server-filter
                 :log 'websocket-server-accept
                 :filter-multibyte nil
