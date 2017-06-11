@@ -94,6 +94,10 @@
 ;; Remote server test, with wss ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; echo.websocket.org has an untrusted certificate, for the test to
+;; proceed, we need to disable trust checking.
+(setq tls-checktrust nil)
+
 (when (>= (string-to-number (substring emacs-version 0 2)) 24)
   (message "Testing with wss://echo.websocket.org")
   (when (eq system-type 'windows-nt)
