@@ -609,7 +609,8 @@ connecting or open."
 
 (defun* websocket-open (url &key protocols extensions (on-open 'identity)
                             (on-message (lambda (_w _f))) (on-close 'identity)
-                            (on-error 'websocket-default-error-handler))
+                            (on-error 'websocket-default-error-handler)
+                            (nowait nil))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
 the server that this client supports the protocols in the list
@@ -694,9 +695,9 @@ describing the problem with the frame.
                           (host (url-host url-struct)))
                        (if (eq type 'plain)
                            (make-network-process :name name :buffer nil :host host
-                                                 :service port :nowait nil)
+                                                 :service port :nowait nowait)
                          (condition-case-unless-debug nil
-                             (open-network-stream name nil host port :type type :nowait nil)
+                             (open-network-stream name nil host port :type type :nowait nowait)
                            (wrong-number-of-arguments
                             (signal 'websocket-wss-needs-emacs-24 "wss")))))
                  (signal 'websocket-unsupported-protocol (url-type url-struct))))
