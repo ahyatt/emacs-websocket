@@ -714,6 +714,10 @@ describing the problem with the frame.
                      (websocket-calculate-accept key))))
     (unless conn (error "Could not establish the websocket connection to %s" url))
     (process-put conn :websocket websocket)
+    (when nowait
+      (process-put conn :key key)
+      (process-put conn :protocols protocols)
+      (process-put conn :extensions extensions))
     (set-process-filter conn
                         (lambda (process output)
                           (let ((websocket (process-get process :websocket)))
@@ -723,11 +727,25 @@ describing the problem with the frame.
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
          (websocket-debug websocket "State change to %s" change)
+         (when (eq 'open (process-status process))
+           (websocket-handshake websocket
+                                (process-get process :key)
+                                (process-get process :protocols)
+                                (process-get process :extensions)))
          (when (and
                 (member (process-status process) '(closed failed exit signal))
                 (not (eq 'closed (websocket-ready-state websocket))))
            (websocket-try-callback 'websocket-on-close 'on-close websocket)))))
     (set-process-query-on-exit-flag conn nil)
+    (unless nowait
+      (websocket-handshake websocket key protocols extensions))
+    (websocket-debug websocket "Websocket opened")
+    websocket))
+
+(defun websocket-handshake (websocket key protocols extensions)
+  (let* ((url (websocket-url websocket))
+         (url-struct (url-generic-parse-url url))
+         (conn (websocket-conn websocket)))
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
                                  (let ((path (url-filename url-struct)))
@@ -735,9 +753,7 @@ describing the problem with the frame.
     (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
                      key (websocket-accept-string websocket))
     (process-send-string conn
-                         (websocket-create-headers url key protocols extensions))
-    (websocket-debug websocket "Websocket opened")
-    websocket))
+                         (websocket-create-headers url key protocols extensions))))
 
 (defun websocket-process-headers (url headers)
   "On opening URL, process the HEADERS sent from the server."
