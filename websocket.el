@@ -680,6 +680,10 @@ describing the invalid header received from the server.
 
 `websocket-unparseable-frame': Data in the error is a string
 describing the problem with the frame.
+
+`nowait': If NOWAIT is non-nil,
+return without waiting for the connection to complete.
+Default nil.
 "
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
