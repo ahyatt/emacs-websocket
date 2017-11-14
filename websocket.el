@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.8
+;; Version: 1.9
 ;; Package-Requires: ((cl-lib "0.5"))
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -99,7 +99,7 @@ same for the protocols."
   accept-string
   (inflight-input nil))
 
-(defvar websocket-version "1.5"
+(defvar websocket-version "1.9"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
