@@ -947,8 +947,9 @@ All these parameters are defined as in `websocket-open'."
                                     (mapconcat 'identity (cdr ext) "; "))))
                                extensions ", ")))
                     (when cookie-header cookie-header)
-                    (mapconcat (lambda (cons) (format "%s: %s" (car cons) (cdr cons)))
-                               custom-headers-alist "\r\n")
+                    (concat (mapconcat (lambda (cons) (format "%s: %s" (car cons) (cdr cons)))
+                                       custom-headers-alist "\r\n")
+                            (when custom-headers-alist "\r\n"))
                     "\r\n")
             host-port
             key

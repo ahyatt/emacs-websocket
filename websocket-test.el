@@ -220,7 +220,7 @@
                                          '(("ext1" . ("a" "b=2"))
                                            ("ext2")) nil)))
       (should (equal
-               (concat base-headers "Foo: bar\r\nBaz: boo\r\n")
+               (concat base-headers "Foo: bar\r\nBaz: boo\r\n\r\n")
                (websocket-create-headers "ws://www.example.com/path"
                                          "key" nil nil '(("Foo" . "bar") ("Baz" . "boo"))))))
     (flet ((url-cookie-generate-header-lines
