@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.8
+;; Version: 1.9
 ;; Package-Requires: ((cl-lib "0.5"))
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -99,7 +99,7 @@ same for the protocols."
   accept-string
   (inflight-input nil))
 
-(defvar websocket-version "1.5"
+(defvar websocket-version "1.9"
   "Version numbers of this version of websocket.el.")
 
 (defvar websocket-debug nil
@@ -606,7 +606,8 @@ connecting or open."
 
 (cl-defun websocket-open (url &key protocols extensions (on-open 'identity)
                             (on-message (lambda (_w _f))) (on-close 'identity)
-                            (on-error 'websocket-default-error-handler))
+                            (on-error 'websocket-default-error-handler)
+                            (nowait nil) (custom-header-alist nil))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
 the server that this client supports the protocols in the list
@@ -676,6 +677,14 @@ describing the invalid header received from the server.
 
 `websocket-unparseable-frame': Data in the error is a string
 describing the problem with the frame.
+
+`nowait': If NOWAIT is true, return without waiting for the
+connection to complete.
+
+`custom-headers-alist': An alist of custom headers to pass to the
+server. The car is the header name, the cdr is the header value.
+These are different from the extensions because it is not related
+to the websocket protocol.
 "
   (let* ((name (format "websocket to %s" url))
          (url-struct (url-generic-parse-url url))
@@ -691,9 +700,9 @@ describing the problem with the frame.
                           (host (url-host url-struct)))
                        (if (eq type 'plain)
                            (make-network-process :name name :buffer nil :host host
-                                                 :service port :nowait nil)
+                                                 :service port :nowait nowait)
                          (condition-case-unless-debug nil
-                             (open-network-stream name nil host port :type type :nowait nil)
+                             (open-network-stream name nil host port :type type :nowait nowait)
                            (wrong-number-of-arguments
                             (signal 'websocket-wss-needs-emacs-24 "wss")))))
                  (signal 'websocket-unsupported-protocol (url-type url-struct))))
@@ -731,7 +740,8 @@ describing the problem with the frame.
     (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
                      key (websocket-accept-string websocket))
     (process-send-string conn
-                         (websocket-create-headers url key protocols extensions))
+                         (websocket-create-headers
+                          url key protocols extensions custom-header-alist))
     (websocket-debug websocket "Websocket opened")
     websocket))
 
@@ -899,9 +909,10 @@ connection, which should be kept in order to pass to
                 (not (eq 'closed (websocket-ready-state websocket))))
            (websocket-try-callback 'websocket-on-close 'on-close websocket)))))))
 
-(defun websocket-create-headers (url key protocol extensions)
-  "Create connections headers for the given URL, KEY, PROTOCOL and EXTENSIONS.
-These are defined as in `websocket-open'."
+(defun websocket-create-headers (url key protocol extensions custom-headers-alist)
+  "Create connections headers for the given URL, KEY, PROTOCOL, and EXTENSIONS.
+Additionally, the CUSTOM-HEADERS-ALIST is passed from the client.
+All these parameters are defined as in `websocket-open'."
   (let* ((parsed-url (url-generic-parse-url url))
          (host-port (if (url-port-if-non-default parsed-url)
                         (format "%s:%s" (url-host parsed-url) (url-port parsed-url))
@@ -932,6 +943,9 @@ These are defined as in `websocket-open'."
                                     (mapconcat 'identity (cdr ext) "; "))))
                                extensions ", ")))
                     (when cookie-header cookie-header)
+                    (concat (mapconcat (lambda (cons) (format "%s: %s" (car cons) (cdr cons)))
+                                       custom-headers-alist "\r\n")
+                            (when custom-headers-alist "\r\n"))
                     "\r\n")
             host-port
             key
