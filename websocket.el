@@ -731,11 +731,21 @@ to the websocket protocol.
      (lambda (process change)
        (let ((websocket (process-get process :websocket)))
          (websocket-debug websocket "State change to %s" change)
-         (when (and
-                (member (process-status process) '(closed failed exit signal))
-                (not (eq 'closed (websocket-ready-state websocket))))
-           (websocket-try-callback 'websocket-on-close 'on-close websocket)))))
+         (let ((status (process-status process)))
+           (when (and nowait (eq status 'open))
+             (websocket-handshake url conn key protocols extensions custom-header-alist))
+
+           (when (and (member status '(closed failed exit signal))
+                      (not (eq 'closed (websocket-ready-state websocket))))
+             (websocket-try-callback 'websocket-on-close 'on-close websocket))))))
     (set-process-query-on-exit-flag conn nil)
+    (unless nowait
+      (websocket-handshake url conn key protocols extensions custom-header-alist))
+    websocket))
+
+(defun websocket-handshake (url conn key protocols extensions custom-header-alist)
+  (let ((url-struct (url-generic-parse-url url))
+        (websocket (process-get conn :websocket)))
     (process-send-string conn
                          (format "GET %s HTTP/1.1\r\n"
                                  (let ((path (url-filename url-struct)))
@@ -745,8 +755,7 @@ to the websocket protocol.
     (process-send-string conn
                          (websocket-create-headers
                           url key protocols extensions custom-header-alist))
-    (websocket-debug websocket "Websocket opened")
-    websocket))
+    (websocket-debug websocket "Websocket opened")))
 
 (defun websocket-process-headers (url headers)
   "On opening URL, process the HEADERS sent from the server."
