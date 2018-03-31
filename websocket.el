@@ -728,20 +728,23 @@ to the websocket protocol.
                             (websocket-outer-filter websocket output))))
     (set-process-sentinel
      conn
-     (lambda (process change)
-       (let ((websocket (process-get process :websocket)))
-         (websocket-debug websocket "State change to %s" change)
-         (let ((status (process-status process)))
-           (when (and nowait (eq status 'open))
-             (websocket-handshake url conn key protocols extensions custom-header-alist))
-
-           (when (and (member status '(closed failed exit signal))
-                      (not (eq 'closed (websocket-ready-state websocket))))
-             (websocket-try-callback 'websocket-on-close 'on-close websocket))))))
+     (websocket-sentinel url conn key protocols extensions custom-header-alist nowait))
     (set-process-query-on-exit-flag conn nil)
     (unless nowait
       (websocket-handshake url conn key protocols extensions custom-header-alist))
     websocket))
+
+(defun websocket-sentinel (url conn key protocols extensions custom-header-alist nowait)
+  #'(lambda (process change)
+      (let ((websocket (process-get process :websocket)))
+        (websocket-debug websocket "State change to %s" change)
+        (let ((status (process-status process)))
+          (when (and nowait (eq status 'open))
+            (websocket-handshake url conn key protocols extensions custom-header-alist))
+
+          (when (and (member status '(closed failed exit signal))
+                     (not (eq 'closed (websocket-ready-state websocket))))
+            (websocket-try-callback 'websocket-on-close 'on-close websocket))))))
 
 (defun websocket-handshake (url conn key protocols extensions custom-header-alist)
   (let ((url-struct (url-generic-parse-url url))
