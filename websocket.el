@@ -234,12 +234,9 @@ approximately 537M long."
            val nbytes))
   (if (= nbytes 8)
       (progn
-        (let ((hi-32bits (lsh val -32))
-              ;; Test for systems that don't have > 32 bits, and
-              ;; for those systems just return the value.
-              (low-32bits (if (= 0 (expt 2 32))
-                              val
-                            (logand #xffffffff val))))
+        (let* ((hi-32bits (lsh val -32))
+	       ;; This is just VAL on systems that don't have >= 32 bits.
+	       (low-32bits (- val (lsh hi-32bits 32))))
           (when (or (> hi-32bits 0) (> (lsh low-32bits -29) 0))
             (signal 'websocket-frame-too-large val))
           (bindat-pack `((:val vec 2 u32))
