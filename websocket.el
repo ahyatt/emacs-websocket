@@ -730,7 +730,7 @@ to the websocket protocol.
      conn
      (websocket-sentinel url conn key protocols extensions custom-header-alist nowait))
     (set-process-query-on-exit-flag conn nil)
-    (unless nowait
+    (when (eq 'open (process-status conn))
       (websocket-handshake url conn key protocols extensions custom-header-alist))
     websocket))
 
