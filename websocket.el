@@ -788,7 +788,8 @@ connection is invalid, the connection will be closed."
                   (websocket-process-headers (websocket-url websocket) text))
               (error
                (websocket-close websocket)
-               (signal (car err) (cdr err))))
+               (funcall (websocket-on-error websocket)
+                        websocket 'on-open err)))
             (setf (websocket-ready-state websocket) 'open)
             (websocket-try-callback 'websocket-on-open 'on-open websocket))
         (setf (websocket-inflight-input websocket) text)))
