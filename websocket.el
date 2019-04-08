@@ -194,15 +194,15 @@ power of 2, up to 8.
 We support getting frames up to 536870911 bytes (2^29 - 1),
 approximately 537M long."
   (if (= n 8)
-    (let* ((32-bit-parts
-            (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
-           (cval
-            (logior (lsh (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
-      (if (and (= (aref 32-bit-parts 0) 0)
-               (= (lsh (aref 32-bit-parts 1) -29) 0))
-          cval
-        (signal 'websocket-unparseable-frame
-                "Frame value found too large to parse!")))
+      (let* ((32-bit-parts
+              (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
+             (cval
+              (logior (lsh (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
+        (if (and (= (aref 32-bit-parts 0) 0)
+                 (= (lsh (aref 32-bit-parts 1) -29) 0))
+            cval
+          (signal 'websocket-unparseable-frame
+                  (list "Frame value found too large to parse!"))))
     ;; n is not 8
     (bindat-get-field
      (condition-case _
@@ -217,7 +217,7 @@ approximately 537M long."
                         "websocket-get-bytes: Unknown N: %S" n)))))
           s)
        (args-out-of-range (signal 'websocket-unparseable-frame
-                                  (format "Frame unexpectedly shortly: %s" s))))
+                                  (list (format "Frame unexpectedly shortly: %s" s)))))
      :val)))
 
 (defun websocket-to-bytes (val nbytes)
@@ -238,7 +238,7 @@ approximately 537M long."
                ;; This is just VAL on systems that don't have >= 32 bits.
                (low-32bits (- val (lsh hi-32bits 32))))
           (when (or (> hi-32bits 0) (> (lsh low-32bits -29) 0))
-            (signal 'websocket-frame-too-large val))
+            (signal 'websocket-frame-too-large (list val)))
           (bindat-pack `((:val vec 2 u32))
                        `((:val . [,hi-32bits ,low-32bits])))))
     (bindat-pack
@@ -460,10 +460,10 @@ The only acceptable one to websocket is responce code 101.
 A t value will be returned on success, and an error thrown
 if not."
   (unless (string-match "^HTTP/1.1 \\([[:digit:]]+\\)" output)
-    (signal 'websocket-invalid-header "Invalid HTTP status line"))
+    (signal 'websocket-invalid-header (list "Invalid HTTP status line")))
   (unless (equal "101" (match-string 1 output))
     (signal 'websocket-received-error-http-response
-	    (string-to-number (match-string 1 output))))
+	        (list (string-to-number (match-string 1 output)))))
   t)
 
 (defun websocket-parse-repeated-field (output field)
@@ -555,13 +555,13 @@ The frame may be too large for this buid of Emacs, in which case
 size of the frame which was too large to process.  This also has
 the `websocket-error' condition."
   (unless (websocket-check frame)
-    (signal 'websocket-illegal-frame frame))
+    (signal 'websocket-illegal-frame (list frame)))
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
                    (websocket-frame-opcode frame)
                    (websocket-frame-payload frame))
   (websocket-ensure-connected websocket)
   (unless (websocket-openp websocket)
-    (signal 'websocket-closed frame))
+    (signal 'websocket-closed (list frame)))
   (process-send-string (websocket-conn websocket)
                        ;; We mask only when we're a client, following the spec.
                        (websocket-encode-frame frame (not (websocket-server-p websocket)))))
@@ -605,9 +605,9 @@ connecting or open."
 ;;;;;;;;;;;;;;;;;;;;;;
 
 (cl-defun websocket-open (url &key protocols extensions (on-open 'identity)
-                            (on-message (lambda (_w _f))) (on-close 'identity)
-                            (on-error 'websocket-default-error-handler)
-                            (nowait nil) (custom-header-alist nil))
+                              (on-message (lambda (_w _f))) (on-close 'identity)
+                              (on-error 'websocket-default-error-handler)
+                              (nowait nil) (custom-header-alist nil))
   "Open a websocket connection to URL, returning the `websocket' struct.
 The PROTOCOL argument is optional, and setting it will declare to
 the server that this client supports the protocols in the list
@@ -698,14 +698,14 @@ to the websocket protocol.
                                     (if (eq type 'tls) 443 80)
                                   (url-port url-struct)))
                           (host (url-host url-struct)))
-                       (if (eq type 'plain)
-                           (make-network-process :name name :buffer nil :host host
-                                                 :service port :nowait nowait)
-                         (condition-case-unless-debug nil
-                             (open-network-stream name nil host port :type type :nowait nowait)
-                           (wrong-number-of-arguments
-                            (signal 'websocket-wss-needs-emacs-24 "wss")))))
-                 (signal 'websocket-unsupported-protocol (url-type url-struct))))
+                     (if (eq type 'plain)
+                         (make-network-process :name name :buffer nil :host host
+                                               :service port :nowait nowait)
+                       (condition-case-unless-debug nil
+                           (open-network-stream name nil host port :type type :nowait nowait)
+                         (wrong-number-of-arguments
+                          (signal 'websocket-wss-needs-emacs-24 (list "wss"))))))
+                 (signal 'websocket-unsupported-protocol (list (url-type url-struct)))))
          (websocket (websocket-inner-create
                      :conn conn
                      :url url
@@ -807,16 +807,16 @@ of populating the list of server extensions to WEBSOCKET."
     (websocket-debug websocket "Checking for accept header: %s" accept-string)
     (unless (string-match (regexp-quote accept-string) output)
       (signal 'websocket-invalid-header
-              "Incorrect handshake from websocket: is this really a websocket connection?")))
+              (list "Incorrect handshake from websocket: is this really a websocket connection?"))))
   (let ((case-fold-search t))
     (websocket-debug websocket "Checking for upgrade header")
     (unless (string-match "\r\nUpgrade: websocket\r\n" output)
       (signal 'websocket-invalid-header
-              "No 'Upgrade: websocket' header found"))
+              (list "No 'Upgrade: websocket' header found")))
     (websocket-debug websocket "Checking for connection header")
     (unless (string-match "\r\nConnection: upgrade\r\n" output)
       (signal 'websocket-invalid-header
-              "No 'Connection: upgrade' header found"))
+              (list "No 'Connection: upgrade' header found")))
     (when (websocket-protocols websocket)
       (dolist (protocol (websocket-protocols websocket))
         (websocket-debug websocket "Checking for protocol match: %s"
@@ -827,7 +827,7 @@ of populating the list of server extensions to WEBSOCKET."
                                  output)
                    (list protocol)
                  (signal 'websocket-invalid-header
-                         "Incorrect or missing protocol returned by the server."))))
+                         (list "Incorrect or missing protocol returned by the server.")))))
           (setf (websocket-negotiated-protocols websocket) protocols))))
     (let* ((extensions (websocket-parse-repeated-field
                         output
@@ -840,8 +840,8 @@ of populating the list of server extensions to WEBSOCKET."
             (push x extra-extensions))))
       (when extra-extensions
         (signal 'websocket-invalid-header
-                (format "Non-requested extensions returned by server: %S"
-                        extra-extensions)))
+                (list (format "Non-requested extensions returned by server: %S"
+                              extra-extensions))))
       (setf (websocket-negotiated-extensions websocket) extensions)))
   t)
 
