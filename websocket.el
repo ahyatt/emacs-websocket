@@ -567,9 +567,7 @@ the `websocket-error' condition."
                        (websocket-encode-frame frame (not (websocket-server-p websocket)))))
 
 (defun websocket-openp (websocket)
-  ;; FIXME: "open and either connecting or open"?  I don't understand.  --Stef
-  "Check WEBSOCKET and return non-nil if it is open, and either
-connecting or open."
+  "Check WEBSOCKET and return non-nil if the connection is open."
   (and websocket
        (not (eq 'close (websocket-ready-state websocket)))
        (member (process-status (websocket-conn websocket)) '(open run))))
