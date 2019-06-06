@@ -111,10 +111,10 @@
 (ert-deftest websocket-verify-response-code ()
   (should (websocket-verify-response-code "HTTP/1.1 101"))
   (should
-   (eq 400 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 400")
-                          :type 'websocket-received-error-http-response))))
+   (equal '(400) (cdr (should-error (websocket-verify-response-code "HTTP/1.1 400")
+                                    :type 'websocket-received-error-http-response))))
   (should
-   (eq 200 (cdr (should-error (websocket-verify-response-code "HTTP/1.1 200")))))
+   (equal '(200) (cdr (should-error (websocket-verify-response-code "HTTP/1.1 200")))))
   (should-error (websocket-verify-response-code "HTTP/1.")
                 :type 'websocket-invalid-header))
 
@@ -445,10 +445,16 @@
       (should (equal (list frame2 frame1) processed-frames))
       (should-not (websocket-inflight-input fake-ws)))
     (flet ((websocket-close (websocket)))
-      (setf (websocket-ready-state fake-ws) 'connecting)
-      (should (eq 500 (cdr (should-error
-                                (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")
-                                :type 'websocket-received-error-http-response)))))))
+      (let ((on-error-called))
+        (setf (websocket-ready-state fake-ws) 'connecting)
+        (setf (websocket-on-open fake-ws) (lambda (ws &rest _) t))
+        (setf (websocket-on-error fake-ws)
+              (lambda (_ type err)
+                (should (eq type 'on-open))
+                (should (equal '(websocket-received-error-http-response 500) err))
+                (setq on-error-called t)))
+        (websocket-outer-filter fake-ws "HTTP/1.1 500\r\n\r\n")
+        (should on-error-called)))))
 
 (ert-deftest websocket-outer-filter-bad-connection ()
   (let* ((on-open-calledp)
