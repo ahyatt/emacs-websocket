@@ -217,7 +217,7 @@ approximately 537M long."
                         "websocket-get-bytes: Unknown N: %S" n)))))
           s)
        (args-out-of-range (signal 'websocket-unparseable-frame
-                                  (list (format "Frame unexpectedly shortly: %s" s)))))
+                                  (list (format "Frame unexpectedly short: %s" s)))))
      :val)))
 
 (defun websocket-to-bytes (val nbytes)
@@ -252,7 +252,7 @@ approximately 537M long."
 (defun websocket-get-opcode (s)
   "Retrieve the opcode from first byte of string S."
   (websocket-ensure-length s 1)
-  (let ((opcode (logand #xf (websocket-get-bytes s 1))))
+  (let ((opcode (logand #xf (aref s 0))))
     (cond ((= opcode 0) 'continuation)
           ((= opcode 1) 'text)
           ((= opcode 2) 'binary)
@@ -265,7 +265,7 @@ approximately 537M long."
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
   (websocket-ensure-length s 1)
-  (let* ((initial-val (logand 127 (websocket-get-bytes s 1))))
+  (let* ((initial-val (logand 127 (aref s 0))))
     (cond ((= initial-val 127)
            (websocket-ensure-length s 9)
            (cons (websocket-get-bytes (substring s 1) 8) 9))
@@ -289,12 +289,15 @@ This is used to both mask and unmask data."
   ;; string of the same length (for example, 6 multibyte chars for 你好 instead
   ;; of the correct 6 unibyte chars, which would convert into 2 multibyte
   ;; chars).
-  (apply
-   #'unibyte-string
-   (cl-loop for b across data
-            for i from 0 to (length data)
-            collect
-            (logxor (websocket-get-bytes (substring key (mod i 4)) 1) b))))
+  (funcall
+   #'encode-coding-string
+   (let ((result (make-string (length data) ?x)))
+     (cl-loop
+      for i from 0 below (length data)
+      do
+      (setf (seq-elt result i) (logxor (aref key (mod i 4)) (seq-elt data i)))
+      finally (return result)))
+   'utf-8))
 
 (defun websocket-ensure-length (s n)
   "Ensure the string S has at most N bytes.
@@ -351,13 +354,13 @@ the frame finishes.  If the frame is not completed, return NIL."
   (catch 'websocket-incomplete-frame
     (websocket-ensure-length s 1)
     (let* ((opcode (websocket-get-opcode s))
-           (fin (logand 128 (websocket-get-bytes s 1)))
+           (fin (logand 128 (aref s 0)))
            (payloadp (memq opcode '(continuation text binary ping pong)))
            (payload-len (when payloadp
                           (websocket-get-payload-len (substring s 1))))
            (maskp (and
                    payloadp
-                   (= 128 (logand 128 (websocket-get-bytes (substring s 1) 1)))))
+                   (= 128 (logand 128 (aref s 1)))))
            (payload-start (when payloadp (+ (if maskp 5 1) (cdr payload-len))))
            (payload-end (when payloadp (+ payload-start (car payload-len))))
            (unmasked-payload (when payloadp
