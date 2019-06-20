@@ -46,6 +46,7 @@
 (require 'bindat)
 (require 'url-parse)
 (require 'url-cookie)
+(require 'seq)
 (eval-when-compile (require 'cl-lib))
 
 ;;; Code:
@@ -289,15 +290,11 @@ This is used to both mask and unmask data."
   ;; string of the same length (for example, 6 multibyte chars for 你好 instead
   ;; of the correct 6 unibyte chars, which would convert into 2 multibyte
   ;; chars).
-  (funcall
-   #'encode-coding-string
-   (let ((result (make-string (length data) ?x)))
-     (cl-loop
-      for i from 0 below (length data)
-      do
-      (setf (seq-elt result i) (logxor (aref key (mod i 4)) (seq-elt data i)))
-      finally (return result)))
-   'utf-8))
+  (cl-loop
+   with result = (make-string (length data) ?x)
+   for i from 0 below (length data)
+   do (setf (seq-elt result i) (logxor (aref key (mod i 4)) (seq-elt data i)))
+   finally return (string-as-unibyte result)))
 
 (defun websocket-ensure-length (s n)
   "Ensure the string S has at most N bytes.
