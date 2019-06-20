@@ -294,7 +294,7 @@ This is used to both mask and unmask data."
    with result = (make-string (length data) ?x)
    for i from 0 below (length data)
    do (setf (seq-elt result i) (logxor (aref key (mod i 4)) (seq-elt data i)))
-   finally return result))
+   finally return (string-as-unibyte result)))
 
 (defun websocket-ensure-length (s n)
   "Ensure the string S has at most N bytes.
