@@ -197,6 +197,20 @@
 (ert-deftest websocket-mask-is-unibyte ()
   (should-not (multibyte-string-p (websocket-mask "\344\275\240\345\245\275" "abcdef"))))
 
+(ert-deftest websocket-frame-correctly-encoded ()
+  ;; This example comes from https://github.com/ahyatt/emacs-websocket/issues/58.
+  (cl-letf ((text "{\"parent_header\":{},\"header\":{\"msg_id\":\"a2940bc8-619e-4872-97bd-4c8d6fb93017\",\"msg_type\":\"history_request\",\"version\":\"5.3\",\"username\":\"n\",\"session\":\"409cf442-74ba-462f-8183-6652503005af\",\"date\":\"2019-06-20T02:17:43.925049-0500\"},\"content\":{\"output\":false,\"raw\":false,\"hist_access_type\":\"tail\",\"n\":100},\"metadata\":{},\"buffers\":[],\"channel\":\"shell\"}")
+            ((symbol-function #'websocket-genbytes)
+             (lambda (&rest _) "\10\206\356\224")))
+    (let ((frame (websocket-read-frame
+                  (websocket-encode-frame
+                   (make-websocket-frame :opcode 'text
+                                         :payload (encode-coding-string text 'raw-text)
+                                         :completep t)
+                   t))))
+      (should frame)
+      (should (equal (websocket-frame-payload frame) text)))))
+
 (ert-deftest websocket-create-headers ()
   (let ((base-headers (concat "Host: www.example.com\r\n"
                               "Upgrade: websocket\r\n"
