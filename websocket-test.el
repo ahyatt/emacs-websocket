@@ -120,25 +120,32 @@
 
 (ert-deftest websocket-verify-headers ()
   (let ((accept "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        (accept-alt-case "Sec-Websocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
         (invalid-accept "Sec-WebSocket-Accept: bad")
         (upgrade "Upgrade: websocket")
+        (upgrade-alt-case "Upgrade: Websocket")
         (connection "Connection: upgrade")
         (ws (websocket-inner-create
              :conn "fake-conn" :url "ws://foo/bar"
              :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="))
         (ws-with-protocol
          (websocket-inner-create
-             :conn "fake-conn" :url "ws://foo/bar"
-             :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-             :protocols '("myprotocol")))
+          :conn "fake-conn" :url "ws://foo/bar"
+          :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+          :protocols '("myprotocol")))
         (ws-with-extensions
          (websocket-inner-create
-             :conn "fake-conn" :url "ws://foo/bar"
-             :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-             :extensions '("ext1" "ext2"))))
+          :conn "fake-conn" :url "ws://foo/bar"
+          :accept-string "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+          :extensions '("ext1" "ext2"))))
     (should (websocket-verify-headers
              ws
              (websocket-test-header-with-lines accept upgrade connection)))
+    ;; Force case sensitivity to make sure we aren't too case sensitive.
+    (let ((case-fold-search nil))
+      (should (websocket-verify-headers
+               ws
+               (websocket-test-header-with-lines accept-alt-case upgrade-alt-case connection))))
     (should-error
      (websocket-verify-headers
       ws
