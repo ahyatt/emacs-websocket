@@ -17,16 +17,17 @@
 
 ;;; Commentary:
 
-;; Usage: emacs -batch -Q -L . -l websocket-functional-test.el
+;; These are functional tests that may fail for various environmental reasons,
+;; such as blocked ports. For example Windows users have to have gnutls DLLs in
+;; the Emacs bin directory for this to work. A firewall may also interfere with
+;; these tests.
 ;;
-;; Note: this functional tests requires that you have python with the
-;; Tornado web server.  See http://www.tornadoweb.org/en/stable/ for
-;; information on aquiring.
+;; These tests are written to test the basic connectivity and message-sending.
+;; Corner-cases and error handling is tested in websocket-test.el.
 
-(require 'tls)   ;; tests a particular bug we had on emacs 23
-(setq debug-on-error t)
+(require 'tls)   ;; tests a particular bug we had on Emacs 23
 (require 'websocket)
-(eval-when-compile (require 'cl))
+(require 'cl)
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local server test ;;
@@ -48,116 +49,56 @@
 
 (message "Opening the websocket")
 
-(defvar wstest-ws
-  (websocket-open
-   "ws://127.0.0.1:9999"
-   :on-message (lambda (_websocket frame)
-                 (push (websocket-frame-text frame) wstest-msgs)
-                 (message "ws frame: %S" (websocket-frame-text frame))
-                 (error "Test error (expected)"))
-   :on-close (lambda (_websocket) (setq wstest-closed t))))
+(defmacro websocket-test-wait-with-timeout (timeout &rest body)
+  "Run BODY until true or TIMEOUT (in seconds) is reached.
 
-(defun wstest-pop-to-debug ()
-  "Open websocket log buffer. Not used in testing. Just for debugging."
-  (interactive)
-  (pop-to-buffer (websocket-get-debug-buffer-create wstest-ws)))
+Will return false if the timeout was reached. This macro is not
+written to be used widely."
+  `(let ((begin (current-time))
+         (result nil))
+     (while (and (< (- (float-time (time-subtract (current-time) begin))) ,timeout) (not result))
+       (setq result ,@body)
+       (sleep-for 0.5))
+     result))
 
-(sleep-for 0.1)
-(assert (websocket-openp wstest-ws))
+(ert-deftest websocket-client-with-remote-server ()
+  ;; Emacs previous to Emacs 24 cannot handle wss.
+  (when (>= (string-to-number (substring emacs-version 0 2)) 24)
+    ;; echo.websocket.org has an untrusted certificate, for the test to
+    ;; proceed, we need to disable trust checking.
+    (let* ((tls-checktrust nil)
+             (wstest-closed nil)
+             (wstest-msg)
+             (wstest-ws
+              (websocket-open
+               "wss://echo.websocket.org"
+               :on-message (lambda (_websocket frame)
+                             (setq wstest-msg (websocket-frame-text frame)))
+               :on-close (lambda (_websocket) (setq wstest-closed t)))))
+        (should (websocket-test-wait-with-timeout 2 (websocket-openp wstest-ws)))
+        (should (websocket-test-wait-with-timeout 2 (eq 'open (websocket-ready-state wstest-ws))))
+        (should (null wstest-msg))
+        (websocket-send-text wstest-ws "Hi!")
+        (should (websocket-test-wait-with-timeout 5 (equal wstest-msg "Hi!")))
+        (websocket-close wstest-ws))))
 
-(assert (null wstest-msgs))
-
-(websocket-send-text wstest-ws "你好")
-
-(sleep-for 0.1)
-(assert (equal (car wstest-msgs) "You said: 你好"))
-(setf (websocket-on-error wstest-ws) (lambda (_ws _type _err)))
-(websocket-send-text wstest-ws "Hi after error!")
-(sleep-for 0.1)
-(assert (equal (car wstest-msgs) "You said: Hi after error!"))
-
-(websocket-close wstest-ws)
-(assert (null (websocket-openp wstest-ws)))
-
-(if (not (eq system-type 'windows-nt))
-    ; Windows doesn't have support for the SIGSTP signal, so we'll just kill
-    ; the process.
-    (stop-process wstest-server-proc))
-(kill-process wstest-server-proc)
-
-;; Make sure the processes are closed.  This happens asynchronously,
-;; so let's wait for it.
-(sleep-for 1)
-(assert (null (process-list)) t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Remote server test, with wss ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; echo.websocket.org has an untrusted certificate, for the test to
-;; proceed, we need to disable trust checking.
-(setq tls-checktrust nil)
-
-(when (>= (string-to-number (substring emacs-version 0 2)) 24)
-  (message "Testing with wss://echo.websocket.org")
-  (when (eq system-type 'windows-nt)
-    (message "Windows users must have gnutls DLLs in the emacs bin directory."))
-  (setq wstest-ws
-        (websocket-open
-         "wss://echo.websocket.org"
-         :on-open (lambda (_websocket)
-                    (message "Websocket opened"))
-         :on-message (lambda (_websocket frame)
-                       (push (websocket-frame-text frame) wstest-msgs)
-                       (message "ws frame: %S" (websocket-frame-text frame)))
-         :on-close (lambda (_websocket)
-                     (message "Websocket closed")
-                     (setq wstest-closed t)))
-        wstest-msgs nil)
-  (sleep-for 0.3)
-  (assert (websocket-openp wstest-ws))
-  (sleep-for 0.6)
-  (assert (eq 'open (websocket-ready-state wstest-ws)))
-  (assert (null wstest-msgs))
-  (websocket-send-text wstest-ws "Hi!")
-  (sleep-for 1)
-  (assert (equal (car wstest-msgs) "Hi!"))
-  (websocket-close wstest-ws))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Local client and server ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(message "Testing with emacs websocket server.")
-(message "If this does not pass, make sure your firewall allows the connection.")
-(setq wstest-closed nil)
-(let ((server-conn (websocket-server
-                    9998
-                    :host 'local
-                    :on-message (lambda (ws frame)
-                                  (message "Server received text!")
-                                  (websocket-send-text
-                                   ws (websocket-frame-text frame)))
-                    :on-open (lambda (_websocket) "Client connection opened!")
-                    :on-close (lambda (_websocket)
-                                (setq wstest-closed t)))))
-  (setq wstest-msgs nil
-        wstest-ws
-        (websocket-open
-         "ws://localhost:9998"
-         :on-message (lambda (_websocket frame)
-                       (message "ws frame: %S" (websocket-frame-text frame))
-                       (push
-                        (websocket-frame-text frame) wstest-msgs))))
-
-  (assert (websocket-openp wstest-ws))
-  (websocket-send-text wstest-ws "你好")
-  (sleep-for 0.3)
-  (assert (equal (car wstest-msgs) "你好"))
-  (websocket-server-close server-conn))
-(assert wstest-closed)
-(websocket-close wstest-ws)
-
-(sleep-for 1)
-(assert (null (process-list)) t)
-(message "\nAll tests passed!\n")
+(ert-deftest websocket-server ()
+  (let* ((wstest-closed)
+         (wstest-msg)
+         (server-conn (websocket-server
+                       9998
+                       :host 'local
+                       :on-message (lambda (ws frame)
+                                     (websocket-send-text
+                                      ws (websocket-frame-text frame)))
+                       :on-close (lambda (_websocket)
+                                   (setq wstest-closed t))))
+         (wstest-ws (websocket-open
+                    "ws://localhost:9998"
+                    :on-message (lambda (_websocket frame)
+                                  (setq wstest-msg (websocket-frame-text frame))))))
+    (should (websocket-test-wait-with-timeout 1 (websocket-openp wstest-ws)))
+    (websocket-send-text wstest-ws "你好")
+    (should (websocket-test-wait-with-timeout 1 (equal wstest-msg "你好")))
+    (websocket-server-close server-conn)
+    (should (websocket-test-wait-with-timeout 1 wstest-closed))))
