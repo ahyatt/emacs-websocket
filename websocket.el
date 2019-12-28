@@ -741,9 +741,9 @@ to the websocket protocol.
   (let ((url-struct (url-generic-parse-url url))
         (websocket (process-get conn :websocket)))
     (when(and (eq 'connecting (websocket-ready-state websocket))
-              (eq (process-status conn)
-                  (or (and nowait 'connect)
-                      'open)))
+              (memq (process-status conn)
+                    (or (and nowait '(connect run))
+                        '(open run))))
       (process-send-string conn
                            (format "GET %s HTTP/1.1\r\n"
                                    (let ((path (url-filename url-struct)))
