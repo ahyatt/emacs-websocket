@@ -740,10 +740,9 @@ to the websocket protocol.
 (defun websocket-ensure-handshake (url conn key protocols extensions custom-header-alist nowait)
   (let ((url-struct (url-generic-parse-url url))
         (websocket (process-get conn :websocket)))
-    (when(and (eq 'connecting (websocket-ready-state websocket))
-              (memq (process-status conn)
-                    (or (and nowait '(connect run))
-                        '(open run))))
+    (when (and (eq 'connecting (websocket-ready-state websocket))
+               (memq (process-status conn)
+                     (list 'run (if nowait 'connect 'open))))
       (process-send-string conn
                            (format "GET %s HTTP/1.1\r\n"
                                    (let ((path (url-filename url-struct)))
