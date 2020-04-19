@@ -744,15 +744,14 @@ to the websocket protocol.
     (when (and (eq 'connecting (websocket-ready-state websocket))
                (memq (process-status conn)
                      (list 'run (if nowait 'connect 'open))))
-      (process-send-string conn
-                           (format "GET %s HTTP/1.1\r\n"
-                                   (let ((path (url-filename url-struct)))
-                                     (if (> (length path) 0) path "/"))))
       (websocket-debug websocket "Sending handshake, key: %s, acceptance: %s"
                        key (websocket-accept-string websocket))
       (process-send-string conn
-                           (websocket-create-headers
-                            url key protocols extensions custom-header-alist)))))
+                           (format "GET %s HTTP/1.1\r\n%s"
+                                   (let ((path (url-filename url-struct)))
+                                     (if (> (length path) 0) path "/"))
+                                   (websocket-create-headers
+                                    url key protocols extensions custom-header-alist))))))
 
 (defun websocket-process-headers (url headers)
   "On opening URL, process the HEADERS sent from the server."
