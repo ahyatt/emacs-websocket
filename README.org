@@ -1,3 +1,13 @@
+* Warning
+If you are having an issue with a missing =master= branch, please note that I've
+ renamed the =master= branch to =main=.
+
+Please see the following relevant bugs:
+** https://github.com/hlissner/doom-emacs/issues/3435
+** https://github.com/ahyatt/emacs-websocket/issues/69
+
+Apologies for the breakage, we hope this will be resolved very soon.
+
 * Description
 This is a elisp library for websocket clients to talk to websocket
 servers, and for websocket servers to accept connections from
