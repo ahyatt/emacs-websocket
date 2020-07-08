@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import logging
 import tornado
 import tornado.web
@@ -12,8 +13,8 @@ class EchoWebSocket(websocket.WebSocketHandler):
         logging.info("OPEN")
 
     def on_message(self, message):
-        logging.info(u"ON_MESSAGE: {0}".format(message))
-        self.write_message(u"You said: {0}".format(message))
+        logging.info("ON_MESSAGE: {0}".format(message))
+        self.write_message("You said: {0}".format(message))
 
     def on_close(self):
         logging.info("ON_CLOSE")
