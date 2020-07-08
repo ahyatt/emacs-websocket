@@ -37,6 +37,9 @@
 
 (setq websocket-debug t)
 
+(unless wstest-server-url
+  (setq wstest-server-url "wss://echo.websocket.org"))
+
 (defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
 (defvar wstest-server-name "wstest-server")
 (defvar wstest-server-proc
@@ -71,7 +74,7 @@ written to be used widely."
              (wstest-msg)
              (wstest-ws
               (websocket-open
-               "wss://echo.websocket.org"
+               wstest-server-url
                :on-message (lambda (_websocket frame)
                              (setq wstest-msg (websocket-frame-text frame)))
                :on-close (lambda (_websocket) (setq wstest-closed t)))))
