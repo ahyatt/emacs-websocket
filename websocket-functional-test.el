@@ -37,14 +37,15 @@
 
 (setq websocket-debug t)
 
-(unless wstest-server-url
+(unless (boundp 'wstest-server-url)
   (setq wstest-server-url "wss://echo.websocket.org"))
 
 (defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
 (defvar wstest-server-name "wstest-server")
-(defvar wstest-server-proc
-  (start-process wstest-server-name wstest-server-buffer
-                 "python" "testserver.py" "--log_to_stderr" "--logging=debug"))
+(when wstest-server-url "wss://127.0.0.1:9999"
+  (setq wstest-server-proc
+    (start-process wstest-server-name wstest-server-buffer
+                   "python3" "testserver.py" "--log_to_stderr" "--logging=debug")))
 (sleep-for 1)
 
 (defvar wstest-msgs nil)
@@ -83,7 +84,10 @@ written to be used widely."
         (should (null wstest-msg))
         (websocket-send-text wstest-ws "Hi!")
         (should (websocket-test-wait-with-timeout 5 (equal wstest-msg "Hi!")))
-        (websocket-close wstest-ws))))
+        (websocket-close wstest-ws)
+        (when wstest-server-proc
+          (sleep-for 1)
+          (kill-process wstest-server-proc)))))
 
 (ert-deftest websocket-server ()
   (let* ((wstest-closed)
