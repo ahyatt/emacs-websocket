@@ -29,29 +29,7 @@
 (require 'websocket)
 (require 'cl)
 
-;;;;;;;;;;;;;;;;;;;;;;;
-;; Local server test ;;
-;;;;;;;;;;;;;;;;;;;;;;;
-
-(message "Testing with local server")
-
-(setq websocket-debug t)
-
-(unless (boundp 'wstest-server-url)
-  (setq wstest-server-url "wss://echo.websocket.org"))
-
-(defvar wstest-server-buffer (get-buffer-create "*wstest-server*"))
-(defvar wstest-server-name "wstest-server")
-(when wstest-server-url "wss://127.0.0.1:9999"
-  (setq wstest-server-proc
-    (start-process wstest-server-name wstest-server-buffer
-                   "python3" "testserver.py" "--log_to_stderr" "--logging=debug")))
-(sleep-for 1)
-
-(defvar wstest-msgs nil)
-(defvar wstest-closed nil)
-
-(message "Opening the websocket")
+;;; Code:
 
 (defmacro websocket-test-wait-with-timeout (timeout &rest body)
   "Run BODY until true or TIMEOUT (in seconds) is reached.
@@ -65,29 +43,43 @@ written to be used widely."
        (sleep-for 0.5))
      result))
 
+(defun websocket-functional-client-test (wstest-server-url)
+  "Run the main part of an ert test against WSTEST-SERVER-URL."
+  ;; the server may have an untrusted certificate, for the test to proceed, we
+  ;; need to disable trust checking.
+  (let* ((tls-checktrust nil)
+         (wstest-closed nil)
+         (wstest-msg)
+         (wstest-server-proc)
+         (wstest-ws
+          (websocket-open
+           wstest-server-url
+           :on-message (lambda (_websocket frame)
+                         (setq wstest-msg (websocket-frame-text frame)))
+           :on-close (lambda (_websocket) (setq wstest-closed t)))))
+    (should (websocket-test-wait-with-timeout 2 (websocket-openp wstest-ws)))
+    (should (websocket-test-wait-with-timeout 2 (eq 'open (websocket-ready-state wstest-ws))))
+    (should (null wstest-msg))
+    (websocket-send-text wstest-ws "Hi!")
+    (should (websocket-test-wait-with-timeout 5 (equal wstest-msg "Hi!")))
+    (websocket-close wstest-ws)))
+
+(ert-deftest websocket-client-with-local-server ()
+  ;; If testserver.py cannot start, this test will fail. In general, if you
+  ;; don't care about avoiding outside connections, the remote server variant is
+  ;; usually easier to run, and tests the same things..
+  (let ((proc (start-process
+               "websocket-testserver" "*websocket-testserver*"
+               "python3" "testserver.py" "--log_to_stderr" "--logging=debug")))
+    (when proc
+      (sleep-for 1)
+      (websocket-functional-client-test "ws://127.0.0.1:9999"))))
+
 (ert-deftest websocket-client-with-remote-server ()
   ;; Emacs previous to Emacs 24 cannot handle wss.
-  (when (>= (string-to-number (substring emacs-version 0 2)) 24)
-    ;; echo.websocket.org has an untrusted certificate, for the test to
-    ;; proceed, we need to disable trust checking.
-    (let* ((tls-checktrust nil)
-             (wstest-closed nil)
-             (wstest-msg)
-             (wstest-ws
-              (websocket-open
-               wstest-server-url
-               :on-message (lambda (_websocket frame)
-                             (setq wstest-msg (websocket-frame-text frame)))
-               :on-close (lambda (_websocket) (setq wstest-closed t)))))
-        (should (websocket-test-wait-with-timeout 2 (websocket-openp wstest-ws)))
-        (should (websocket-test-wait-with-timeout 2 (eq 'open (websocket-ready-state wstest-ws))))
-        (should (null wstest-msg))
-        (websocket-send-text wstest-ws "Hi!")
-        (should (websocket-test-wait-with-timeout 5 (equal wstest-msg "Hi!")))
-        (websocket-close wstest-ws)
-        (when wstest-server-proc
-          (sleep-for 1)
-          (kill-process wstest-server-proc)))))
+  (if (>= (string-to-number (substring emacs-version 0 2)) 24)
+      (websocket-functional-client-test "wss://echo.websocket.org")
+    (websocket-functional-client-test "ws://echo.websocket.org")))
 
 (ert-deftest websocket-server ()
   (let* ((wstest-closed)
@@ -109,3 +101,6 @@ written to be used widely."
     (should (websocket-test-wait-with-timeout 1 (equal wstest-msg "你好")))
     (websocket-server-close server-conn)
     (should (websocket-test-wait-with-timeout 1 wstest-closed))))
+
+(provide 'websocket-functional-test)
+;;; websocket-functional-test.el ends here

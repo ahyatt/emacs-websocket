@@ -14,7 +14,7 @@ class EchoWebSocket(websocket.WebSocketHandler):
 
     def on_message(self, message):
         logging.info("ON_MESSAGE: {0}".format(message))
-        self.write_message("You said: {0}".format(message))
+        self.write_message(message)
 
     def on_close(self):
         logging.info("ON_CLOSE")
