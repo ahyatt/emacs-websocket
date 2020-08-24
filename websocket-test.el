@@ -341,7 +341,11 @@
   (should (equal 30 (websocket-get-bytes (websocket-to-bytes 30 1) 1)))
   (should (equal 300 (websocket-get-bytes (websocket-to-bytes 300 2) 2)))
   (should (equal 70000 (websocket-get-bytes (websocket-to-bytes 70000 8) 8)))
-  (should-error (websocket-to-bytes 536870912 8) :type 'websocket-frame-too-large)
+  ;; Only run if the number we're testing with is not more than the system can
+  ;; handle.
+  (if (equal "1" (calc-eval (format "536870912 < %d" most-positive-fixnum)))
+      (should-error (websocket-to-bytes 536870912 8)
+                    :type 'websocket-frame-too-large))
   (should-error (websocket-to-bytes 30 3))
   (should-error (websocket-to-bytes 300 1))
   ;; I'd like to test the error for 32-byte systems on 8-byte lengths,
