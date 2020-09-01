@@ -693,14 +693,27 @@ to the websocket protocol.
                           (port (if (= 0 (url-port url-struct))
                                     (if (eq type 'tls) 443 80)
                                   (url-port url-struct)))
-                          (host (url-host url-struct)))
+                          (host (url-host url-struct))
+                          (url-as-http (let ((url-as-http (copy-sequence url-struct)))
+                                         (setf (url-type url-as-http) (if (eq type 'plain) "http" "https"))
+                                         url-as-http))
+                          (proxy (url-generic-parse-url (url-find-proxy-for-url url-as-http (url-host url-as-http)))))
                      (if (eq type 'plain)
                          (make-network-process :name name :buffer nil :host host
                                                :service port :nowait nowait)
+                       (if proxy
+                           (let ((plain-conn (make-network-process
+                                              :name name :buffer nil :host (url-host proxy)
+                                              :service (url-port proxy))))
+                             (let ((url-http-after-change-function)
+                                   (url-current-object url-as-http))
+                               (url-https-proxy-connect plain-conn))
+                             (sleep-for 0.5)
+                             (gnutls-negotiate :process plain-conn :hostname host))
                        (condition-case-unless-debug nil
                            (open-network-stream name nil host port :type type :nowait nowait)
                          (wrong-number-of-arguments
-                          (signal 'websocket-wss-needs-emacs-24 (list "wss"))))))
+                          (signal 'websocket-wss-needs-emacs-24 (list "wss")))))))
                  (signal 'websocket-unsupported-protocol (list (url-type url-struct)))))
          (websocket (websocket-inner-create
                      :conn conn
