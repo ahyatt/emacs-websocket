@@ -95,6 +95,7 @@ same for the protocols."
   (url (cl-assert nil) :read-only t)
   (protocols nil :read-only t)
   (extensions nil :read-only t)
+  (custom-header-alist :read-only t)
   (conn (cl-assert nil) :read-only t)
   ;; Only populated for servers, this is the server connection.
   server-conn
@@ -594,7 +595,8 @@ the `websocket-error' condition."
                     :on-open (websocket-on-open websocket)
                     :on-message (websocket-on-message websocket)
                     :on-close (websocket-on-close websocket)
-                    :on-error (websocket-on-error websocket))))
+                    :on-error (websocket-on-error websocket)
+                    :custom-header-alist (websocket-custom-header-alist websocket))))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Websocket client ;;
@@ -711,6 +713,7 @@ to the websocket protocol.
                      :on-error on-error
                      :protocols protocols
                      :extensions (mapcar 'car extensions)
+                     :custom-header-alist custom-header-alist
                      :accept-string
                      (websocket-calculate-accept key))))
     (unless conn (error "Could not establish the websocket connection to %s" url))
