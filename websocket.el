@@ -557,7 +557,6 @@ the `websocket-error' condition."
   (websocket-debug websocket "Sending frame, opcode: %s payload: %s"
                    (websocket-frame-opcode frame)
                    (websocket-frame-payload frame))
-  (websocket-ensure-connected websocket)
   (unless (websocket-openp websocket)
     (signal 'websocket-closed (list frame)))
   (process-send-string (websocket-conn websocket)
@@ -580,21 +579,6 @@ the `websocket-error' condition."
                                           :completep t))
     (setf (websocket-ready-state websocket) 'closed))
   (delete-process (websocket-conn websocket)))
-
-(defun websocket-ensure-connected (websocket)
-  "If the WEBSOCKET connection is closed, open it."
-  (unless (and (websocket-conn websocket)
-               (cl-ecase (process-status (websocket-conn websocket))
-                 ((run open listen) t)
-                 ((stop exit signal closed connect failed nil) nil)))
-    (websocket-close websocket)
-    (websocket-open (websocket-url websocket)
-                    :protocols (websocket-protocols websocket)
-                    :extensions (websocket-extensions websocket)
-                    :on-open (websocket-on-open websocket)
-                    :on-message (websocket-on-message websocket)
-                    :on-close (websocket-on-close websocket)
-                    :on-error (websocket-on-error websocket))))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Websocket client ;;
