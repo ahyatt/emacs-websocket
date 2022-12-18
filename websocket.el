@@ -720,6 +720,7 @@ to the websocket protocol.
 
           (when (and (member status '(closed failed exit signal))
                      (not (eq 'closed (websocket-ready-state websocket))))
+            (setf (websocket-ready-state websocket) 'closed)
             (websocket-try-callback 'websocket-on-close 'on-close websocket))))))
 
 (defun websocket-ensure-handshake (url conn key protocols extensions custom-header-alist nowait)
