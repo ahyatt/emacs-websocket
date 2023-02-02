@@ -5,7 +5,7 @@
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/emacs-websocket
 ;; Keywords: Communication, Websocket, Server
-;; Version: 1.13.1
+;; Version: 1.14
 ;; Package-Requires: ((cl-lib "0.5"))
 ;;
 ;; This program is free software; you can redistribute it and/or
@@ -720,6 +720,7 @@ to the websocket protocol.
 
           (when (and (member status '(closed failed exit signal))
                      (not (eq 'closed (websocket-ready-state websocket))))
+            (setf (websocket-ready-state websocket) 'closed)
             (websocket-try-callback 'websocket-on-close 'on-close websocket))))))
 
 (defun websocket-ensure-handshake (url conn key protocols extensions custom-header-alist nowait)
