@@ -98,6 +98,7 @@ same for the protocols."
   (conn (cl-assert nil) :read-only t)
   ;; Only populated for servers, this is the server connection.
   server-conn
+  origin
   accept-string
   (inflight-input nil))
 
@@ -997,6 +998,7 @@ All these parameters are defined as in `websocket-open'."
                                     ws (plist-get header-info :protocols)
                                     (plist-get header-info :extensions)))
                                   (setf (websocket-ready-state ws) 'open)
+                                  (setf (websocket-origin ws) (plist-get header-info :origin))
                                   (websocket-try-callback 'websocket-on-open
                                                           'on-open ws))
                          (message "Invalid client headers found in: %s" output)
@@ -1045,6 +1047,8 @@ messages and a plist containing `:key', the websocket key,
         (setq plist (plist-put plist :extensions (websocket-parse-repeated-field
                                                   output
                                                   "Sec-Websocket-Extensions"))))
+      (when (string-match "^Origin: \\(.+\\)\r\n" output)
+        (setq plist (plist-put plist :origin (match-string 1 output))))
       plist)))
 
 (provide 'websocket)
