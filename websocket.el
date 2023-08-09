@@ -200,9 +200,9 @@ approximately 537M long."
       (let* ((32-bit-parts
               (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
              (cval
-              (logior (lsh (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
+              (logior (ash (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
         (if (and (= (aref 32-bit-parts 0) 0)
-                 (= (lsh (aref 32-bit-parts 1) -29) 0))
+                 (= (ash (aref 32-bit-parts 1) -29) 0))
             cval
           (signal 'websocket-unparseable-frame
                   (list "Frame value found too large to parse!"))))
@@ -237,10 +237,10 @@ approximately 537M long."
            val nbytes))
   (if (= nbytes 8)
       (progn
-        (let* ((hi-32bits (lsh val -32))
+        (let* ((hi-32bits (ash val -32))
                ;; This is just VAL on systems that don't have >= 32 bits.
-               (low-32bits (- val (lsh hi-32bits 32))))
-          (when (or (> hi-32bits 0) (> (lsh low-32bits -29) 0))
+               (low-32bits (- val (ash hi-32bits 32))))
+          (when (or (> hi-32bits 0) (> (ash low-32bits -29) 0))
             (signal 'websocket-frame-too-large (list val)))
           (bindat-pack `((:val vec 2 u32))
                        `((:val . [,hi-32bits ,low-32bits])))))
