@@ -65,21 +65,13 @@ written to be used widely."
     (websocket-close wstest-ws)))
 
 (ert-deftest websocket-client-with-local-server ()
-  ;; If testserver.py cannot start, this test will fail. In general, if you
-  ;; don't care about avoiding outside connections, the remote server variant is
-  ;; usually easier to run, and tests the same things..
+  ;; If testserver.py cannot start, this test will fail.
   (let ((proc (start-process
                "websocket-testserver" "*websocket-testserver*"
                "python3" "testserver.py" "--log_to_stderr" "--logging=debug")))
     (when proc
       (sleep-for 1)
       (websocket-functional-client-test "ws://127.0.0.1:9999"))))
-
-(ert-deftest websocket-client-with-remote-server ()
-  ;; Emacs previous to Emacs 24 cannot handle wss.
-  (if (>= (string-to-number (substring emacs-version 0 2)) 24)
-      (websocket-functional-client-test "wss://echo.websocket.org")
-    (websocket-functional-client-test "ws://echo.websocket.org")))
 
 (ert-deftest websocket-server ()
   (let* ((wstest-closed)
