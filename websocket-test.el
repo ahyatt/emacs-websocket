@@ -439,7 +439,8 @@
       (should (equal processes-deleted '("fake-conn"))))))
 
 (ert-deftest websocket-outer-filter ()
-  (let* ((fake-ws (websocket-inner-create
+  (let* ((open-callback-called)
+         (fake-ws (websocket-inner-create
                    :conn t :url t :accept-string t
                    :on-open (lambda (websocket)
                               (should (eq (websocket-ready-state websocket)
@@ -452,7 +453,6 @@
                                        :length 9))
          (frame2 (make-websocket-frame :opcode 'text :payload "bar" :completep t
                                        :length 9))
-         (open-callback-called)
          (websocket-frames
           (concat
            (websocket-encode-frame frame1 t)

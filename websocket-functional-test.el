@@ -1,6 +1,6 @@
-;;; websocket-functional-test.el --- Simple functional testing
+;;; websocket-functional-test.el --- Simple functional testing -*- lexical-binding:t -*-
 
-;; Copyright (c) 2013, 2016  Free Software Foundation, Inc.
+;; Copyright (c) 2013, 2016, 2026  Free Software Foundation, Inc.
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -22,12 +22,15 @@
 ;; the Emacs bin directory for this to work. A firewall may also interfere with
 ;; these tests.
 ;;
+;; This test requires `uv' to be installed.
+;;
 ;; These tests are written to test the basic connectivity and message-sending.
 ;; Corner-cases and error handling is tested in websocket-test.el.
 
 (require 'tls)   ;; tests a particular bug we had on Emacs 23
 (require 'websocket)
 (require 'cl)
+(require 'f)
 
 ;;; Code:
 
@@ -64,11 +67,16 @@ written to be used widely."
     (should (websocket-test-wait-with-timeout 5 (equal wstest-msg "Hi!")))
     (websocket-close wstest-ws)))
 
+;; Hack because we have to be able to find the testserver.py script.
+(defconst websocket-ft-testserver (format "%s/testserver.py"
+                                          (file-name-directory
+                                           (f-this-file))))
+
 (ert-deftest websocket-client-with-local-server ()
   ;; If testserver.py cannot start, this test will fail.
   (let ((proc (start-process
                "websocket-testserver" "*websocket-testserver*"
-               "python3" "testserver.py" "--log_to_stderr" "--logging=debug")))
+               websocket-ft-testserver)))
     (when proc
       (sleep-for 1)
       (websocket-functional-client-test "ws://127.0.0.1:9999"))))
@@ -85,9 +93,9 @@ written to be used widely."
                        :on-close (lambda (_websocket)
                                    (setq wstest-closed t))))
          (wstest-ws (websocket-open
-                    "ws://localhost:9998"
-                    :on-message (lambda (_websocket frame)
-                                  (setq wstest-msg (websocket-frame-text frame))))))
+                     "ws://localhost:9998"
+                     :on-message (lambda (_websocket frame)
+                                   (setq wstest-msg (websocket-frame-text frame))))))
     (should (websocket-test-wait-with-timeout 1 (websocket-openp wstest-ws)))
     (websocket-send-text wstest-ws "你好")
     (should (websocket-test-wait-with-timeout 1 (equal wstest-msg "你好")))
