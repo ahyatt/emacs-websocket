@@ -735,7 +735,10 @@ to the websocket protocol.
       (process-send-string conn
                            (format "GET %s HTTP/1.1\r\n%s"
                                    (let ((path (url-filename url-struct)))
-                                     (if (> (length path) 0) path "/"))
+                                     (cond
+                                      ((= (length path) 0) "/")
+                                      ((string-prefix-p "/" path) path)
+                                      (t (concat "/" path))))
                                    (websocket-create-headers
                                     url key protocols extensions custom-header-alist))))))
 
