@@ -24,11 +24,11 @@
 
 (require 'ert)
 (require 'websocket)
-(require 's)
-(eval-when-compile (require 'cl))
+;; (require 's)
+(eval-when-compile (require 'cl-lib))
 
 (ert-deftest websocket-genbytes-length ()
-  (loop repeat 100
+  (cl-loop repeat 100
         do (should (= (string-bytes (websocket-genbytes 16)) 16))))
 
 (ert-deftest websocket-calculate-accept ()
@@ -38,11 +38,11 @@
           (websocket-calculate-accept "dGhlIHNhbXBsZSBub25jZQ=="))))
 
 (defconst websocket-test-hello "\x81\x05\x48\x65\x6c\x6c\x6f"
-  "'Hello' string example, taken from the RFC.")
+  "\"Hello\" string example, taken from the RFC.")
 
 (defconst websocket-test-masked-hello
   "\x81\x85\x37\xfa\x21\x3d\x7f\x9f\x4d\x51\x58"
-  "'Hello' masked string example, taken from the RFC.")
+  "\"Hello\" masked string example, taken from the RFC.")
 
 (ert-deftest websocket-get-bytes ()
   (should (equal #x5 (websocket-get-bytes "\x5" 1)))
@@ -107,7 +107,7 @@
                             (- (length websocket-test-masked-hello) (+ i 1)))))))
 
 (defun websocket-test-header-with-lines (&rest lines)
-  (mapconcat 'identity (append lines '("\r\n")) "\r\n"))
+  (mapconcat #'identity (append lines '("\r\n")) "\r\n"))
 
 (ert-deftest websocket-verify-response-code ()
   (should (websocket-verify-response-code "HTTP/1.1 101"))
@@ -226,7 +226,7 @@
                               "Sec-WebSocket-Key: key\r\n"
                               "Sec-WebSocket-Version: 13\r\n")))
     (cl-letf (((symbol-function 'url-cookie-generate-header-lines)
-               (lambda (host localpart secure) "")))
+               (lambda (_host _localpart _secure) "")))
       (should (equal (concat base-headers "\r\n")
                      (websocket-create-headers "ws://www.example.com/path"
                                                "key" nil nil nil)))
@@ -279,7 +279,7 @@
                                 "Upgrade: websocket\r\n"
                                 "Connection: Upgrade\r\n"
                                 "Set-Cookie: foo=bar;\r\n\r\n")))
-  (cl-flet ((url-cookie-handle-set-cookie (text) (should nil)))
+  (cl-flet ((url-cookie-handle-set-cookie (_text) (should nil)))
     (websocket-process-headers "ws://example.com/path"
                                "HTTP/1.1 101 Switching Protocols\r\n")))
 
@@ -289,7 +289,7 @@
          (deleted)
          (websocket (websocket-inner-create
                      :conn t :url t
-                     :on-message (lambda (websocket frame)
+                     :on-message (lambda (_websocket frame)
                                    (setq
                                     processed
                                     (websocket-frame-payload frame)))
@@ -305,7 +305,7 @@
                  processed))))
     (setq sent nil)
     (cl-letf (((symbol-function 'websocket-send)
-               (lambda (websocket content) (setq sent content))))
+               (lambda (_websocket content) (setq sent content))))
       (should (equal
                (make-websocket-frame :opcode 'pong :payload "data" :completep t)
                (progn
@@ -314,7 +314,7 @@
                                                                          :payload "data")))
                  sent))))
     (cl-letf (((symbol-function 'delete-process)
-               (lambda (conn) (setq deleted t))))
+               (lambda (_conn) (setq deleted t))))
       (should (progn
                 (funcall
                  (websocket-process-frame websocket
@@ -325,10 +325,10 @@
   (let* ((error-called)
          (websocket (websocket-inner-create
                      :conn t :url t :accept-string t
-                     :on-message (lambda (websocket frame)
+                     :on-message (lambda (_websocket _frame)
                                    (message "In on-message")
                                    (error "err"))
-                     :on-error (lambda (ws type err)
+                     :on-error (lambda (_ws type _err)
                                  (should (eq 'on-message type))
                                  (setq error-called t)))))
     (funcall (websocket-process-frame websocket
@@ -368,19 +368,22 @@
                       (websocket-read-frame
                        (websocket-encode-frame
                         (make-websocket-frame :opcode 'text
-                                              :payload long-string) t)))))))
+                                              :payload long-string)
+                        t)))))))
   (cl-letf (((symbol-function 'websocket-genbytes)
-             (lambda (n) (substring websocket-test-masked-hello 2 6))))
+             (lambda (_n) (substring websocket-test-masked-hello 2 6))))
     (should (equal websocket-test-masked-hello
                    (websocket-encode-frame
                     (make-websocket-frame :opcode 'text :payload "Hello"
-                                          :completep t) t))))
+                                          :completep t)
+                    t))))
   (should-not
    (websocket-frame-completep
     (websocket-read-frame
      (websocket-encode-frame (make-websocket-frame :opcode 'text
                                                    :payload "Hello"
-                                                   :completep nil) t))))
+                                                   :completep nil)
+                             t))))
   (should (equal 'close (websocket-frame-opcode
                          (websocket-read-frame
                           (websocket-encode-frame
@@ -422,10 +425,10 @@
   (let ((sent-frames)
         (processes-deleted))
     (cl-letf (((symbol-function 'websocket-send)
-               (lambda (websocket frame) (push frame sent-frames)))
+               (lambda (_websocket frame) (push frame sent-frames)))
               ((symbol-function 'websocket-openp)
-               (lambda (websocket) t))
-              ((symbol-function 'kill-buffer) (lambda (buffer) t))
+               (lambda (_websocket) t))
+              ((symbol-function 'kill-buffer) (lambda (_buffer) t))
               ((symbol-function 'delete-process)
                (lambda (proc) (add-to-list 'processes-deleted proc))))
       (websocket-close (websocket-inner-create
@@ -447,7 +450,7 @@
                                           'open))
                               (setq open-callback-called t)
                               (error "Ignore me!"))
-                   :on-error (lambda (ws type err))))
+                   :on-error (lambda (_ws _type _err) nil)))
          (processed-frames)
          (frame1 (make-websocket-frame :opcode 'text :payload "foo" :completep t
                                        :length 9))
@@ -458,12 +461,11 @@
            (websocket-encode-frame frame1 t)
            (websocket-encode-frame frame2 t))))
     (cl-letf (((symbol-function 'websocket-process-frame)
-               (lambda (websocket frame)
-                 (lexical-let ((frame frame))
-                   (lambda () (push frame processed-frames)))))
+               (lambda (_websocket frame)
+                 (lambda () (push frame processed-frames))))
               ((symbol-function 'websocket-verify-headers)
-               (lambda (websocket output) t))
-              ((symbol-function 'websocket-close) (lambda (websocket) t)))
+               (lambda (_websocket _output) t))
+              ((symbol-function 'websocket-close) (lambda (_websocket) t)))
       (websocket-outer-filter fake-ws "HTTP/1.1 101 Switching Protocols\r\n")
       (websocket-outer-filter fake-ws "Sec-")
       (should (eq (websocket-ready-state fake-ws) 'connecting))
@@ -477,10 +479,10 @@
       (websocket-outer-filter fake-ws (substring websocket-frames 2))
       (should (equal (list frame2 frame1) processed-frames))
       (should-not (websocket-inflight-input fake-ws)))
-    (cl-letf (((symbol-function 'websocket-close) (lambda (websocket) t)))
+    (cl-letf (((symbol-function 'websocket-close) (lambda (_websocket) t)))
       (let ((on-error-called))
         (setf (websocket-ready-state fake-ws) 'connecting)
-        (setf (websocket-on-open fake-ws) (lambda (ws &rest _) t))
+        (setf (websocket-on-open fake-ws) (lambda (_ws &rest _) t))
         (setf (websocket-on-error fake-ws)
               (lambda (_ type err)
                 (should (eq type 'on-open))
@@ -494,15 +496,15 @@
          (websocket-closed-calledp)
          (fake-ws (websocket-inner-create
                    :conn t :url t :accept-string t
-                   :on-open (lambda (websocket)
+                   :on-open (lambda (_websocket)
                               (setq on-open-calledp t)))))
     (cl-letf (((symbol-function 'websocket-verify-response-code)
-               (lambda (output) t))
+               (lambda (_output) t))
               ((symbol-function 'websocket-verify-headers)
-               (lambda (websocket output) (error "Bad headers!")))
+               (lambda (_websocket _output) (error "Bad headers!")))
               ((symbol-function 'websocket-close)
-               (lambda (websocket) (setq websocket-closed-calledp t))))
-      (condition-case err
+               (lambda (_websocket) (setq websocket-closed-calledp t))))
+      (condition-case nil
           (progn (websocket-outer-filter fake-ws "HTTP/1.1 101\r\n\r\n")
                  (error "Should have thrown an error!"))
         (error
@@ -510,14 +512,15 @@
          (should websocket-closed-calledp))))))
 
 (ert-deftest websocket-outer-filter-fragmented-header ()
-  (let* ((on-open-calledp)
-         (websocket-closed-calledp)
+  (let* (;; (on-open-calledp)
+         ;; (websocket-closed-calledp)
          (fake-ws (websocket-inner-create
                    :protocols '("websocket")
                    :conn t :url t :accept-string "17hG/VoPPd14L9xPSI7LtEr7PQc="
-                   :on-open (lambda (websocket)
-                              (setq on-open-calledp t)))))
-    (cl-letf (((symbol-function 'websocket-close) (lambda (websocket) t)))
+                   :on-open (lambda (_websocket)
+                              ;; (setq on-open-calledp t)
+                              t))))
+    (cl-letf (((symbol-function 'websocket-close) (lambda (_websocket) t)))
       (websocket-outer-filter fake-ws "HTTP/1.1 101 Web Socket Protocol Handsh")
       (websocket-outer-filter fake-ws "ake\r\nConnection: Upgrade\r\n")
       (websocket-outer-filter fake-ws "Upgrade: websocket\r\n")
@@ -526,7 +529,7 @@
 
 (ert-deftest websocket-send-text ()
   (cl-letf (((symbol-function 'websocket-send)
-             (lambda (ws frame)
+             (lambda (_ws frame)
                (should (equal
                         (websocket-frame-payload frame)
                         "\344\275\240\345\245\275")))))
@@ -534,9 +537,9 @@
 
 (ert-deftest websocket-send ()
   (let ((ws (websocket-inner-create :conn t :url t :accept-string t)))
-    (cl-letf (((symbol-function 'websocket-ensure-connected) (lambda  (websocket) t))
-              ((symbol-function 'websocket-openp) (lambda (websocket) t))
-              ((symbol-function 'process-send-string) (lambda (conn string) t)))
+    (cl-letf (((symbol-function 'websocket-ensure-connected) (lambda (_websocket) t))
+              ((symbol-function 'websocket-openp) (lambda (_websocket) t))
+              ((symbol-function 'process-send-string) (lambda (_conn _string) t)))
       ;; Just make sure there is no error.
       (websocket-send ws (make-websocket-frame :opcode 'ping
                                                :completep t)))
@@ -554,17 +557,17 @@
 (ert-deftest websocket-ensure-handshake ()
   (let ((sent-string nil))
     (cl-letf (((symbol-function 'process-send-string)
-               (lambda (proc string) (setq sent-string string)))
+               (lambda (_proc string) (setq sent-string string)))
               ((symbol-function 'process-get)
-               (lambda (proc sym)
+               (lambda (_proc _sym)
                  (websocket-inner-create
                   :conn t :url t :accept-string "key")))
               ((symbol-function 'process-status)
-               (lambda (proc) 'run)))
+               (lambda (_proc) 'run)))
       (websocket-ensure-handshake "ws://example.com?query=1"
                                   'conn 'key nil
                                   nil nil nil)
-      (should (s-starts-with-p "GET /?query=1 HTTP/1.1\r\n" sent-string)))))
+      (should (string-prefix-p "GET /?query=1 HTTP/1.1\r\n" sent-string)))))
 
 (ert-deftest websocket-verify-client-headers ()
   (let* ((http "HTTP/1.1")
@@ -580,20 +583,22 @@
     (should (equal
              '(:key "key" :protocols ("protocol") :extensions ("foo" "bar; baz=2"))
              (websocket-verify-client-headers
-              (mapconcat 'identity (append (list http "" protocol extensions1 extensions2)
-                                           all-required-headers) "\r\n"))))
+              (mapconcat #'identity (append (list http "" protocol extensions1 extensions2)
+                                            all-required-headers)
+                         "\r\n"))))
     (should (websocket-verify-client-headers
-             (mapconcat 'identity
-                        (mapcar 'upcase
+             (mapconcat #'identity
+                        (mapcar #'upcase
                                 (append (list http "" protocol extensions1 extensions2)
-                                        all-required-headers)) "\r\n")))
+                                        all-required-headers))
+                        "\r\n")))
     (dolist (header all-required-headers)
       (should-not (websocket-verify-client-headers
-                   (mapconcat 'identity (append (list http "")
+                   (mapconcat #'identity (append (list http "")
                                                 (remove header all-required-headers))
                               "\r\n"))))
     (should-not (websocket-verify-client-headers
-                 (mapconcat 'identity (append (list "HTTP/1.0" "") all-required-headers)
+                 (mapconcat #'identity (append (list "HTTP/1.0" "") all-required-headers)
                             "\r\n")))))
 
 (ert-deftest websocket-intersect ()
@@ -627,18 +632,20 @@
       (should (string-match "Sec-Websocket-Extensions: seb\r\n" output)))))
 
 (ert-deftest websocket-server-filter ()
-  (let ((on-open-called)
+  (let (;; (on-open-called)
         (ws (websocket-inner-create :conn t :url t :accept-string "key"
-                                    :on-open (lambda (ws) (setq on-open-called t))))
+                                    :on-open (lambda (_ws)
+                                               ;; (setq on-open-called t)
+                                               t)))
         (closed)
         (response)
         (processed))
-    (cl-letf (((symbol-function 'process-send-string) (lambda (p text) (setq response text)))
-              ((symbol-function 'websocket-close) (lambda (ws) (setq closed t)))
-              ((symbol-function 'process-get) (lambda (process sym) ws)))
+    (cl-letf (((symbol-function 'process-send-string) (lambda (_p text) (setq response text)))
+              ((symbol-function 'websocket-close) (lambda (_ws) (setq closed t)))
+              ((symbol-function 'process-get) (lambda (_process _sym) ws)))
       ;; Bad request, in two parts
       (cl-letf (((symbol-function 'websocket-verify-client-headers)
-                 (lambda (text) nil)))
+                 (lambda (_text) nil)))
         (websocket-server-filter nil "HTTP/1.0 GET /foo \r\n")
         (should-not closed)
         (websocket-server-filter nil "\r\n")
@@ -649,12 +656,12 @@
             response nil)
       (setf (websocket-inflight-input ws) nil)
       (cl-letf (((symbol-function 'websocket-verify-client-headers)
-                 (lambda (text) t))
+                 (lambda (_text) t))
                 ((symbol-function 'websocket-get-server-response)
-                 (lambda (ws protocols extensions)
+                 (lambda (_ws _protocols _extensions)
                    "response"))
                 ((symbol-function 'websocket-process-input-on-open-ws)
-                 (lambda (ws text)
+                 (lambda (_ws text)
                    (setq processed t)
                    (should
                     (equal text websocket-test-hello)))))
@@ -725,16 +732,18 @@
     (should (eq 'conn-a (websocket-conn (car websocket-server-websockets))))))
 
 (ert-deftest websocket-default-error-handler ()
-  (cl-letf (((symbol-function 'try-error)
-             (lambda (callback-type err expected-message)
-               (cl-flet ((display-warning
-                           (type message &optional level buffer-name)
+  ;; `cl-flet' creates a function definition for the current lexical
+  ;; scope, whereas `cl-letf' overrides a global binding, like
+  ;; a dynamically-scoped definition.
+  (cl-flet ((try-error (callback-type err expected-message)
+              (cl-letf (((symbol-function 'display-warning)
+                         (lambda (type message &optional level _buffer-name)
                            (should (eq type 'websocket))
                            (should (eq level :error))
-                           (should (string= message expected-message))))
-                 (websocket-default-error-handler nil
-                                                  callback-type
-                                                  err)))))
+                           (should (string= message expected-message)))))
+                (websocket-default-error-handler nil
+                                                 callback-type
+                                                 err))))
     (try-error
      'on-message
      '(end-of-buffer)

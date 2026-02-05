@@ -189,68 +189,76 @@ This is based on the KEY from the Sec-WebSocket-Key header."
   (base64-encode-string
    (sha1 (concat key websocket-guid) nil nil t)))
 
+(defmacro websocket--if-when-compile (cond then else)
+  (declare (debug t) (indent 2))
+  (if (eval cond t) then else))
+
 (defun websocket-get-bytes (s n)
   "From string S, retrieve the value of N bytes.
 Return the value as an unsigned integer.  The value N must be a
 power of 2, up to 8.
 
-We support getting frames up to 536870911 bytes (2^29 - 1),
+In Emacs<28, we support getting frames only up to 536870911 bytes (2^29 - 1),
 approximately 537M long."
-  (if (= n 8)
-      (let* ((32-bit-parts
-              (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
-             (cval
-              (logior (ash (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
-        (if (and (= (aref 32-bit-parts 0) 0)
-                 (= (ash (aref 32-bit-parts 1) -29) 0))
-            cval
-          (signal 'websocket-unparseable-frame
-                  (list "Frame value found too large to parse!"))))
-    ;; n is not 8
-    (bindat-get-field
-     (condition-case _
-         (bindat-unpack
-          `((:val
-             ,(cond ((= n 1) 'u8)
-                    ((= n 2) 'u16)
-                    ((= n 4) 'u32)
-                    ;; This is an error with the library,
-                    ;; not a user-facing, meaningful error.
-                    (t (error
-                        "websocket-get-bytes: Unknown N: %S" n)))))
-          s)
-       (args-out-of-range (signal 'websocket-unparseable-frame
-                                  (list (format "Frame unexpectedly short: %s" s)))))
-     :val)))
+  (websocket--if-when-compile (fboundp 'bindat-type) ;Emacs≥28
+      (bindat-unpack (bindat-type uint (* 8 n)) s)
+    (if (= n 8)
+        (let* ((32-bit-parts
+                (bindat-get-field (bindat-unpack '((:val vec 2 u32)) s) :val))
+               (cval
+                (logior (ash (aref 32-bit-parts 0) 32) (aref 32-bit-parts 1))))
+          (if (and (= (aref 32-bit-parts 0) 0)
+                   (= (ash (aref 32-bit-parts 1) -29) 0))
+              cval
+            (signal 'websocket-unparseable-frame
+                    (list "Frame value found too large to parse!"))))
+      ;; n is not 8
+      (bindat-get-field
+       (condition-case _
+           (bindat-unpack
+            `((:val
+               ,(cond ((= n 1) 'u8)
+                      ((= n 2) 'u16)
+                      ((= n 4) 'u32)
+                      ;; This is an error with the library,
+                      ;; not a user-facing, meaningful error.
+                      (t (error
+                          "websocket-get-bytes: Unknown N: %S" n)))))
+            s)
+         (args-out-of-range (signal 'websocket-unparseable-frame
+                                    (list (format "Frame unexpectedly short: %s" s)))))
+       :val))))
+
 
 (defun websocket-to-bytes (val nbytes)
-  "Encode the integer VAL in NBYTES of data.
+  "Encode the unsigned integer VAL in NBYTES of data.
 NBYTES much be a power of 2, up to 8.
 
-This supports encoding values up to 536870911 bytes (2^29 - 1),
-approximately 537M long."
-  (when (and (< nbytes 8)
-             (> val (expt 2 (* 8 nbytes))))
+In Emacs<28, this supports encoding values only up to 536870911 bytes
+\(2^29 - 1), approximately 537M long."
+  (unless (= 0 (ash val (- (* 8 nbytes))))
     ;; not a user-facing error, this must be caused from an error in
     ;; this library
     (error "websocket-to-bytes: Value %d could not be expressed in %d bytes"
            val nbytes))
-  (if (= nbytes 8)
-      (progn
-        (let* ((hi-32bits (ash val -32))
-               ;; This is just VAL on systems that don't have >= 32 bits.
-               (low-32bits (- val (ash hi-32bits 32))))
-          (when (or (> hi-32bits 0) (> (ash low-32bits -29) 0))
-            (signal 'websocket-frame-too-large (list val)))
-          (bindat-pack `((:val vec 2 u32))
-                       `((:val . [,hi-32bits ,low-32bits])))))
-    (bindat-pack
-     `((:val ,(cond ((= nbytes 1) 'u8)
-                    ((= nbytes 2) 'u16)
-                    ((= nbytes 4) 'u32)
-                    ;; Library error, not system error
-                    (t (error "websocket-to-bytes: Unknown NBYTES: %S" nbytes)))))
-     `((:val . ,val)))))
+  (websocket--if-when-compile (fboundp 'bindat-type)
+      (bindat-pack (bindat-type uint (* 8 nbytes)) val)
+    (if (= nbytes 8)
+        (progn
+          (let* ((hi-32bits (ash val -32))
+                 ;; This is just VAL on systems that don't have >= 32 bits.
+                 (low-32bits (- val (ash hi-32bits 32))))
+            (when (or (> hi-32bits 0) (> (ash low-32bits -29) 0))
+              (signal 'websocket-frame-too-large (list val)))
+            (bindat-pack `((:val vec 2 u32))
+                         `((:val . [,hi-32bits ,low-32bits])))))
+      (bindat-pack
+       `((:val ,(cond ((= nbytes 1) 'u8)
+                      ((= nbytes 2) 'u16)
+                      ((= nbytes 4) 'u32)
+                      ;; Library error, not system error
+                      (t (error "websocket-to-bytes: Unknown NBYTES: %S" nbytes)))))
+       `((:val . ,val))))))
 
 (defun websocket-get-opcode (s)
   "Retrieve the opcode from first byte of string S."
@@ -268,14 +276,25 @@ approximately 537M long."
 We start at position 0, and return a cons of the payload length and how
 many bytes were consumed from the string."
   (websocket-ensure-length s 1)
-  (let* ((initial-val (logand 127 (aref s 0))))
-    (cond ((= initial-val 127)
-           (websocket-ensure-length s 9)
-           (cons (websocket-get-bytes (substring s 1) 8) 9))
-          ((= initial-val 126)
-           (websocket-ensure-length s 3)
-           (cons (websocket-get-bytes (substring s 1) 2) 3))
-          (t (cons initial-val 1)))))
+  (websocket--if-when-compile (fboundp 'bindat-type)
+      (bindat-unpack
+       (bindat-type
+         (len1-raw u8)
+         (len1 unit (logand 127 len1-raw))
+         (len2len unit (pcase len1 (127 8) (126 2) (_ 0)))
+         (len2 uint (progn
+                      (websocket-ensure-length s (1+ len2len))
+                      len2len))
+         :unpack-val (cons (if (zerop len2) len1 len2) (1+ len2len)))
+       s)
+    (let* ((initial-val (logand 127 (aref s 0))))
+      (cond ((= initial-val 127)
+             (websocket-ensure-length s 9)
+             (cons (websocket-get-bytes (substring s 1) 8) 9))
+            ((= initial-val 126)
+             (websocket-ensure-length s 3)
+             (cons (websocket-get-bytes (substring s 1) 2) 3))
+            (t (cons initial-val 1))))))
 
 (cl-defstruct websocket-frame opcode payload length completep)
 
@@ -320,25 +339,27 @@ We mask the frame or not, depending on SHOULD-MASK."
                                          (`ping         9)
                                          (`pong         10))
                                        (if fin 128 0)))
-                              (when payloadp
-                                (list
-                                 (logior
-                                  (if should-mask 128 0)
-                                  (cond ((< (length payload) 126) (length payload))
-                                        ((< (length payload) 65536) 126)
-                                        (t 127)))))
-                              (when (and payloadp (>= (length payload) 126))
-                                (append (websocket-to-bytes
-                                         (length payload)
-                                         (cond ((< (length payload) 126) 1)
-                                               ((< (length payload) 65536) 2)
-                                               (t 8))) nil))
-                              (when (and payloadp should-mask)
-                                (append mask-key nil))
-                              (when payloadp
-                                (append (if should-mask (websocket-mask mask-key payload)
-                                          payload)
-                                        nil)))))
+                           (when payloadp
+                             (list
+                              (logior
+                               (if should-mask 128 0)
+                               (cond ((< (length payload) 126) (length payload))
+                                     ((< (length payload) 65536) 126)
+                                     (t 127)))))
+                           (when (and payloadp (>= (length payload) 126))
+                             (append (websocket-to-bytes
+                                      (length payload)
+                                      (cond ((< (length payload) 126)
+                                             1) ;FIXME: 0?  Impossible?
+                                            ((< (length payload) 65536) 2)
+                                            (t 8)))
+                                     nil))
+                           (when (and payloadp should-mask)
+                             (append mask-key nil))
+                           (when payloadp
+                             (append (if should-mask (websocket-mask mask-key payload)
+                                       payload)
+                                     nil)))))
              ;; We have to make sure the non-payload data is a full 32-bit frame
              (if (= 1 (length val))
                  (append val '(0)) val)))))
@@ -695,7 +716,7 @@ to the websocket protocol.
                      :on-close on-close
                      :on-error on-error
                      :protocols protocols
-                     :extensions (mapcar 'car extensions)
+                     :extensions (mapcar #'car extensions)
                      :accept-string
                      (websocket-calculate-accept key))))
     (unless conn (error "Could not establish the websocket connection to %s" url))
@@ -744,7 +765,7 @@ to the websocket protocol.
 
 (defun websocket-process-headers (url headers)
   "On opening URL, process the HEADERS sent from the server."
-  (when (string-match "Set-Cookie: \(.*\)\r\n" headers)
+  (when (string-match "Set-Cookie: \\(.*\\)\r\n" headers)
     ;; The url-current-object is assumed to be set by
     ;; url-cookie-handle-set-cookie.
     (let ((url-current-object (url-generic-parse-url url)))
@@ -854,8 +875,8 @@ connection, which should be kept in order to pass to
                 :server t
                 :family 'ipv4
                 :noquery t
-                :filter 'websocket-server-filter
-                :log 'websocket-server-accept
+                :filter #'websocket-server-filter
+                :log #'websocket-server-accept
                 :filter-multibyte nil
                 :plist plist
                 :host (plist-get plist :host)
@@ -893,7 +914,7 @@ connection, which should be kept in order to pass to
              :on-error (or (process-get server :on-error)
                            'websocket-default-error-handler)
              :protocols (process-get server :protocol)
-             :extensions (mapcar 'car (process-get server :extensions)))))
+             :extensions (mapcar #'car (process-get server :extensions)))))
     (unless (member ws websocket-server-websockets)
       (push ws websocket-server-websockets))
     (process-put client :websocket ws)
@@ -939,7 +960,7 @@ All these parameters are defined as in `websocket-open'."
                                    (car ext)
                                    (when (cdr ext) "; ")
                                    (when (cdr ext)
-                                     (mapconcat 'identity (cdr ext) "; "))))
+                                     (mapconcat #'identity (cdr ext) "; "))))
                                 extensions ", "))))
              host-port
              key
@@ -965,7 +986,8 @@ All these parameters are defined as in `websocket-open'."
                 (concat
                  (mapconcat
                   (lambda (protocol) (format "Sec-WebSocket-Protocol: %s"
-                                             protocol)) protocols separator)
+                                        protocol))
+                  protocols separator)
                  separator)))
             (let ((extensions (websocket-intersect
                                client-extensions
@@ -974,7 +996,8 @@ All these parameters are defined as in `websocket-open'."
                 (concat
                  (mapconcat
                   (lambda (extension) (format "Sec-Websocket-Extensions: %s"
-                                              extension)) extensions separator)
+                                         extension))
+                  extensions separator)
                  separator)))
             separator)))
 
