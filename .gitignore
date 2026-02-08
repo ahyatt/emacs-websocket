@@ -1,0 +1,5 @@
+*.elc
+
+# ELPA-generated files.
+/websocket-autoloads.el
+/websocket-pkg.el

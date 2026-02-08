@@ -27,10 +27,9 @@
 ;; These tests are written to test the basic connectivity and message-sending.
 ;; Corner-cases and error handling is tested in websocket-test.el.
 
-(require 'tls)   ;; tests a particular bug we had on Emacs 23
+(require 'nsm)
 (require 'websocket)
-(require 'cl)
-(require 'f)
+(require 'ert)
 
 ;;; Code:
 
@@ -50,16 +49,18 @@ written to be used widely."
   "Run the main part of an ert test against WSTEST-SERVER-URL."
   ;; the server may have an untrusted certificate, for the test to proceed, we
   ;; need to disable trust checking.
-  (let* ((tls-checktrust nil)
-         (wstest-closed nil)
+  (let* ((nsm-trust-local-network t)
+         ;; (wstest-closed nil)
          (wstest-msg)
-         (wstest-server-proc)
+         ;; (wstest-server-proc)
          (wstest-ws
           (websocket-open
            wstest-server-url
            :on-message (lambda (_websocket frame)
                          (setq wstest-msg (websocket-frame-text frame)))
-           :on-close (lambda (_websocket) (setq wstest-closed t)))))
+           :on-close (lambda (_websocket)
+                       ;; (setq wstest-closed t)
+                       t))))
     (should (websocket-test-wait-with-timeout 2 (websocket-openp wstest-ws)))
     (should (websocket-test-wait-with-timeout 2 (eq 'open (websocket-ready-state wstest-ws))))
     (should (null wstest-msg))
@@ -70,7 +71,9 @@ written to be used widely."
 ;; Hack because we have to be able to find the testserver.py script.
 (defconst websocket-ft-testserver (format "%s/testserver.py"
                                           (file-name-directory
-                                           (f-this-file))))
+                                           (if (fboundp 'macroexp-file-name)
+                                               (macroexp-file-name) ;Emacs-28
+                                             load-file-name))))
 
 (ert-deftest websocket-client-with-local-server ()
   ;; If testserver.py cannot start, this test will fail.
